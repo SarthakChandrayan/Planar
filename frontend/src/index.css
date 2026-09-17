@@ -1,0 +1,79 @@
+:root {
+  color-scheme: dark;
+  --bg: #11110e;
+  --bg-2: #18180f;
+  --surface: #1c1c16;
+  --ink: #f3f0e6;
+  --muted: #a8a394;
+  --line: #2f2e26;
+  --line-strong: #4a483c;
+  --accent: #d6ff4b;
+  --accent-ink: #14140c;
+  --warn: #ff7a4a;
+  --focus: #d6ff4b;
+  --low: #b8b4a6;
+  --medium: #e2b341;
+  --high: #ff7a4a;
+  --critical: #ff4d4d;
+  --mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Menlo, Consolas, monospace;
+  --sans: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--sans);
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100svh;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 500px at 0% -10%, #24241a 0%, transparent 55%),
+    var(--bg);
+}
+
+button,
+textarea,
+summary,
+input {
+  font: inherit;
+}
+
+button {
+  appearance: none;
+}
+
+button:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

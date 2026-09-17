@@ -1,0 +1,101 @@
+{
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "We will route all new card-not-present charges through Stripe PaymentIntents.",
+      "confidence": 1.0,
+      "source_reference": {
+        "excerpt": "We will route all new card-not-present charges through Stripe PaymentIntents."
+      }
+    },
+    {
+      "id": "DEC-002",
+      "statement": "Settlement cut-off stays at 22:00 UTC. We are not moving it this quarter.",
+      "confidence": 1.0,
+      "source_reference": {
+        "excerpt": "Settlement cut-off stays at 22:00 UTC. We are not moving it this quarter."
+      }
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "statement": "POST /v1/charges must honor an Idempotency-Key header. Checkout already retries.",
+      "confidence": 1.0,
+      "source_reference": {
+        "excerpt": "POST /v1/charges must honor an Idempotency-Key header. Checkout already retries."
+      }
+    },
+    {
+      "id": "REQ-002",
+      "statement": "Failed captures must return a machine-readable decline_code so support is not guessing.",
+      "confidence": 1.0,
+      "source_reference": {
+        "excerpt": "Failed captures must return a machine-readable decline_code so support is not guessing."
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TSK-001",
+      "title": "Add idempotency middleware to POST /v1/charges",
+      "description": "Concrete work: add idempotency middleware to POST /v1/charges.",
+      "priority": "high",
+      "acceptance_criteria": [
+        "A repeated request with the same key and body returns the original charge.",
+        "A repeated request with the same key and a different body returns HTTP 409."
+      ],
+      "source_references": [
+        {
+          "excerpt": "Concrete work: add idempotency middleware to POST /v1/charges."
+        },
+        {
+          "excerpt": "Done means a repeated request with the same key and body returns the original charge."
+        },
+        {
+          "excerpt": "And a repeated request with the same key and a different body returns HTTP 409."
+        }
+      ]
+    },
+    {
+      "id": "TSK-002",
+      "title": "Document capture decline codes for client teams",
+      "description": "Also document capture decline codes for client teams.",
+      "priority": "medium",
+      "acceptance_criteria": [],
+      "source_references": [
+        {
+          "excerpt": "Also document capture decline codes for client teams."
+        }
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "RSK-001",
+      "description": "If the webhook handler and the nightly capture worker both settle the same PaymentIntent, we will double-charge customers.",
+      "severity": "high",
+      "source_reference": {
+        "excerpt": "Risk: if the webhook handler and the nightly capture worker both settle the same PaymentIntent, we will double-charge customers."
+      }
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "OQ-001",
+      "question": "Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?",
+      "context": "Unresolved. Mobile still uses Braintree for wallets. We do not have a decision.",
+      "source_reference": {
+        "excerpt": "Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?"
+      }
+    },
+    {
+      "id": "OQ-002",
+      "question": "Maybe we should add Redis for storing idempotency keys.",
+      "context": "No. Use the existing Postgres unique constraint. Redis is not accepted.",
+      "source_reference": {
+        "excerpt": "Maybe we should add Redis for storing idempotency keys."
+      }
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "Stripe PaymentIntents will be used for card payments in November.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Are we comfortable making Stripe the processor for the November release?"
+      }
+    },
+    {
+      "id": "DEC-002",
+      "statement": "Postgres is the source of truth for payment idempotency, and the idempotency key must be unique per merchant payment request.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Let's make that the decision. Postgres is the source of truth for payment idempotency, and the idempotency key must be unique per merchant payment request."
+      }
+    },
+    {
+      "id": "DEC-003",
+      "statement": "We are not creating a separate payment microservice for this release. Payments will live as an isolated module within checkout.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Then that's the decision: no separate payment microservice for November. Implement payments as an isolated module within checkout."
+      }
+    },
+    {
+      "id": "DEC-004",
+      "statement": "Stripe API version will be pinned for this release.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Agreed. Pin the Stripe API version for this release."
+      }
+    },
+    {
+      "id": "DEC-005",
+      "statement": "Webhooks will be signature-verified, persisted, and processed asynchronously through our existing SQS infrastructure. We are not introducing Kafka.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Daniel: Verify the webhook, write the event to Postgres, then process asynchronously. We can use the existing SQS infrastructure. No new Kafka cluster."
+      }
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "statement": "The new checkout flow will be behind a feature flag and start at 1% rollout.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Let's do 1% initially. We'll define rollout criteria before launch."
+      }
+    },
+    {
+      "id": "REQ-002",
+      "statement": "The internal payment state machine must use explicit state transitions (CREATED, REQUIRES_ACTION, PROCESSING, SUCCEEDED, FAILED, CANCELED) and store the raw processor status separately.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Priya: Stripe has more states than that. We shouldn't pretend they're identical."
+      }
+    },
+    {
+      "id": "REQ-003",
+      "statement": "The API should expose a stable internal response rather than passing the Stripe object straight through to the frontend.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: That's another requirement. Our API should expose a stable internal response rather than passing the Stripe object straight through to the frontend."
+      }
+    },
+    {
+      "id": "REQ-004",
+      "statement": "Sensitive payment information must not be logged. Only log the PaymentIntent ID and internal payment ID.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Daniel: Please make sure sensitive payment information doesn't end up in logs. We'll log the PaymentIntent ID and our internal payment ID, but not card details or client secrets."
+      }
+    },
+    {
+      "id": "REQ-005",
+      "statement": "GET /payments/{id} must be available to fetch the payment status from the backend.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Sofia: Product needs to know what happens if a customer closes their browser after paying."
+      }
+    },
+    {
+      "id": "REQ-006",
+      "statement": "Saved cards are required by product. Stripe customer and payment method identifiers will be stored, not raw card data.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Priya: Saved cards are required by product. We store Stripe customer and payment method identifiers. No raw card information in our database."
+      }
+    },
+    {
+      "id": "REQ-007",
+      "statement": "Authorization checks based on ownership must be implemented for all payment APIs.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: All payment APIs need authenticated users. Add authorization checks based on ownership."
+      }
+    },
+    {
+      "id": "REQ-008",
+      "statement": "Tenant isolation is required. Authorization checks will be implemented in the service layer with specific tests for cross-tenant access.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Tenant isolation is non-negotiable. We don't have time for a full RLS rollout before November. Put the authorization checks in the service layer and add tests specifically for cross-tenant access."
+      }
+    },
+    {
+      "id": "REQ-009",
+      "statement": "Webhook payloads must be verified using Stripe's signature before processing.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Priya: Stripe signs webhook events. We'll verify the signature before processing anything."
+      }
+    },
+    {
+      "id": "REQ-010",
+      "statement": "Webhook events must be stored with unique event IDs to prevent duplicate processing.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Daniel: Webhook events should have unique event IDs so retries don't process the same event twice."
+      }
+    },
+    {
+      "id": "REQ-011",
+      "statement": "A basic daily reconciliation job is in scope. Full real-time reconciliation is not.",
+      "confidence": 0.95,
+      "source_reference": {
+        "excerpt": "Maya: Then let's clarify: a basic daily reconciliation job is in scope. Full real-time reconciliation is not."
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TSK-001",
+      "title": "Implement the daily reconciliation job",
+      "description": "Arjun will implement the daily reconciliation job to compare state against Stripe.",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Daily reconciliation job implemented"
+      ],
+      "source_references": [
+        {
+          "excerpt": "Arjun: I'll implement the daily job."
+        }
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "RSK-001",
+      "description": "Stripe's API version could change unexpectedly, causing breaking responses.",
+      "severity": "medium",
+      "source_reference": {
+        "excerpt": "Priya: One concern: if Stripe's API version changes unexpectedly, we could get a breaking response."
+      }
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "OQ-001",
+      "question": "What numeric rollout/rollback thresholds should be used?",
+      "context": "The rollout thresholds are not finalized and require definition before launch.",
+      "source_reference": {
+        "excerpt": "Maya: We need actual thresholds. That's an open item, not a decision yet."
+      }
+    }
+  ]
+}
