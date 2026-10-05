@@ -1,4 +1,11 @@
-import type { Estimate, Readiness, Run, RunSummary } from '../types/run'
+import type {
+  Estimate,
+  Readiness,
+  Run,
+  RunSummary,
+  Sample,
+  SampleSummary,
+} from '../types/run'
 import { apiUrl, request } from './client'
 
 export function startRun(transcript: string, title?: string | null): Promise<Run> {
@@ -44,4 +51,20 @@ export async function getReadiness(): Promise<Readiness> {
       detail: 'The Planar backend is not running. Start it with: uvicorn app.main:app',
     }
   }
+}
+
+export function listSamples(): Promise<SampleSummary[]> {
+  return request<SampleSummary[]>('/api/samples')
+}
+
+export function getSample(id: string): Promise<Sample> {
+  return request<Sample>(`/api/samples/${encodeURIComponent(id)}`)
+}
+
+export async function getReportMarkdown(id: string): Promise<string> {
+  const response = await fetch(reportUrl(id))
+  if (!response.ok) {
+    throw new Error(`Report unavailable (${response.status})`)
+  }
+  return response.text()
 }

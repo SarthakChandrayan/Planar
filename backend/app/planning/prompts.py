@@ -6,9 +6,10 @@ TASK: Turn the engineering record above into an implementation plan.
 - "title": short name for the plan.
 - "summary": 2-3 sentences on what will be built and the key constraints.
 - "steps": ordered implementation steps (what to build first goes first).
-  Each step has a short "title", a "description" of what to build, and the
-  "requirement_ids" and "task_ids" (from the record) it delivers.
-  Every step must cite at least one requirement or task ID.
+  Each step has a short "title", a "description" of what to build, the
+  "decision_ids" it applies (DEC-...), and the "requirement_ids" (REQ-...)
+  and "task_ids" (TSK-...) it delivers. Put each ID in the matching list.
+  Every step must cite at least one ID.
 - "acceptance_criteria": up to 6 measurable "done when" conditions for the
   whole plan, based on the record.
 

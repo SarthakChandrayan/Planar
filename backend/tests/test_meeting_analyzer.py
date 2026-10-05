@@ -335,3 +335,25 @@ def test_progress_is_reported_per_stage() -> None:
     MeetingAnalyzer(_full_llm()).run(PAYMENT_MEETING_TRANSCRIPT, Recorder(), extra_stages=1)
     assert stages[0] == ("Decisions", 1, 5)
     assert stages[-1] == ("Risks & open questions", 4, 5)
+
+
+def test_short_decision_links_to_longer_requirement_that_extends_it() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {"statement": "Use the existing Postgres unique constraint for keys.", "lines": [21]}
+                ]
+            },
+            "requirements": {
+                "requirements": [
+                    {
+                        "statement": "Repeated charge requests must be rejected by the Postgres unique constraint on idempotency keys within 24 hours.",
+                        "lines": [7],
+                    }
+                ]
+            },
+        }
+    )
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert analysis.requirements[0].related_decision_ids == ["DEC-001"]

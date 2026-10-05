@@ -35,13 +35,20 @@ copy .env.example .env
 .\start.ps1
 ```
 
-Open http://localhost:5173, paste a transcript (try `test_transcript.txt`),
+Open http://localhost:5173, paste a transcript (or click a sample),
 press **Forge**. You can close the tab: the run continues in the background
 and resumes when you come back. When it finishes you get the record, the
 plan, and a **Download .md** button.
 
 The header shows a warning if Ollama is not running or the configured model
 is not installed, with the command that fixes it.
+
+**Plan map.** Every report with a plan gets a visual map, left to right:
+decisions (why) → requirements (what) → plan steps (how) → owners (who).
+Hover a box to light up its whole chain; click it to jump to the item. The
+map is drawn from the validated record, not by the model, so it is instant
+and every arrow is a real link. The Markdown export includes the same map
+as a Mermaid diagram, which GitHub, Notion and Obsidian render.
 
 **Time estimates.** As you paste, Planar shows roughly how long the run will
 take; during a run it shows the time left. Estimates start from timings
@@ -54,8 +61,8 @@ own estimate after the first stage.
 
 ```powershell
 cd backend
-.\.venv\Scripts\python scripts\analyze.py ..\test_transcript.txt
-.\.venv\Scripts\python scripts\analyze.py ..\test_transcript.txt --score   # + score vs the answer key
+.\.venv\Scripts\python scripts\analyze.py ..\samples\payment_platform_redesign.txt
+.\.venv\Scripts\python scripts\analyze.py ..\samples\payment_platform_redesign.txt --score   # + score vs the answer key
 ```
 
 Prints each stage with its time and token count, and writes

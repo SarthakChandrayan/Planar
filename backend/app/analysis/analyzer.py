@@ -26,7 +26,13 @@ from app.analysis.errors import (
     EmptyTranscriptError,
     TranscriptTooLongError,
 )
-from app.analysis.grounding import Grounder, Grounding, similarity, text_mentioned
+from app.analysis.grounding import (
+    Grounder,
+    Grounding,
+    shared_words,
+    similarity,
+    text_mentioned,
+)
 from app.analysis.parsing import parse_json_object
 from app.analysis.schemas import (
     DECISIONS_SCHEMA,
@@ -73,6 +79,9 @@ _RESTATED_DECISION_SIMILARITY = 0.75
 # Inferred links: wording overlap needed, lower when evidence lines are shared.
 _LINK_SIMILARITY = 0.3
 _LINK_SIMILARITY_SAME_LINES = 0.12
+# Or: at least this many distinctive words shared, covering this much of the shorter text.
+_LINK_MIN_SHARED_WORDS = 2
+_LINK_MIN_OVERLAP = 0.5
 _MAX_LINKS = 2
 _MAX_ACCEPTANCE_CRITERIA = 4
 _GENERIC_OWNERS = frozenset(
@@ -516,8 +525,11 @@ def _infer_links(text: str, lines: set[int], targets: list[_Target]) -> list[str
     for target_id, target_text, target_lines in targets:
         score = similarity(text, target_text)
         needed = _LINK_SIMILARITY_SAME_LINES if lines & target_lines else _LINK_SIMILARITY
+        shared, overlap = shared_words(text, target_text)
         if score >= needed:
             scored.append((score, target_id))
+        elif shared >= _LINK_MIN_SHARED_WORDS and overlap >= _LINK_MIN_OVERLAP:
+            scored.append((overlap / 2, target_id))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [target_id for _, target_id in scored[:_MAX_LINKS]]
 

@@ -4,8 +4,8 @@ Writes <out>/<name>.json (analysis + plan + timings) and <name>.md, and
 prints progress as it goes. With --score, also scores the analysis against
 the Payment Platform Redesign answer key.
 
-    .venv/Scripts/python scripts/analyze.py ../test_transcript.txt
-    .venv/Scripts/python scripts/analyze.py ../test_transcript.txt --score
+    .venv/Scripts/python scripts/analyze.py ../samples/payment_platform_redesign.txt
+    .venv/Scripts/python scripts/analyze.py ../samples/payment_platform_redesign.txt --score
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.api import meetings_router, runs_router
+from app.api import meetings_router, runs_router, samples_router
 from app.config import Settings
 from app.dependencies import (
     build_runner,
@@ -106,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(meetings_router)
     app.include_router(runs_router)
+    app.include_router(samples_router)
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:

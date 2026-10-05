@@ -1,11 +1,16 @@
 import logging
+from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
 from app.analysis.parsing import parse_json_object
 from app.domain import (
+    DEC_PREFIX,
     PLAN_PREFIX,
+    REQ_PREFIX,
     STEP_PREFIX,
+    TSK_PREFIX,
+    Decision,
     ImplementationPlan,
     ImplementationPlanStep,
     MeetingAnalysis,
@@ -34,10 +39,20 @@ _MAX_EVIDENCE_PER_STEP = 3
 _MAX_CRITERIA = 8
 
 
+@dataclass
+class _StepDraft:
+    title: str
+    description: str
+    decision_ids: list[str] = field(default_factory=list)
+    requirement_ids: list[str] = field(default_factory=list)
+    task_ids: list[str] = field(default_factory=list)
+
+
 class ImplementationPlanner:
     """Turn a validated MeetingAnalysis into an ImplementationPlan via LLMProvider.
 
-    The model orders and groups work and cites record IDs. Evidence comes
+    The model orders and groups work and cites record IDs (the decisions a
+    step applies, the requirements and tasks it delivers). Evidence comes
     from the cited items, so a plan step is always traceable to transcript
     lines. Tasks the model leaves out are appended as their own steps.
     """
@@ -94,35 +109,36 @@ def _to_domain(
     analysis: MeetingAnalysis,
     title: str | None,
 ) -> ImplementationPlan:
+    decisions = {item.id: item for item in analysis.decisions}
     requirements = {item.id: item for item in analysis.requirements}
     tasks = {item.id: item for item in analysis.tasks}
 
-    drafts: list[tuple[str, str, list[str], list[str]]] = []
+    drafts: list[_StepDraft] = []
     covered_tasks: set[str] = set()
     for item in extracted.steps:
-        draft = _ground_step(item, requirements, tasks)
+        draft = _ground_step(item, decisions, requirements, tasks)
         if draft is None:
             continue
         drafts.append(draft)
-        covered_tasks.update(draft[3])
+        covered_tasks.update(draft.task_ids)
 
     for task in analysis.tasks:
         if task.id not in covered_tasks:
             logger.info("implementation_plan_added_uncovered_task id=%s", task.id)
             drafts.append(_task_step(task))
 
-    steps = []
-    for index, (step_title, description, req_ids, task_ids) in enumerate(drafts, start=1):
-        steps.append(
-            ImplementationPlanStep(
-                id=format_item_id(STEP_PREFIX, index),
-                title=step_title,
-                description=description,
-                related_requirement_ids=req_ids,
-                related_task_ids=task_ids,
-                evidence=_evidence(req_ids, task_ids, requirements, tasks),
-            )
+    steps = [
+        ImplementationPlanStep(
+            id=format_item_id(STEP_PREFIX, index),
+            title=draft.title,
+            description=draft.description,
+            related_decision_ids=draft.decision_ids,
+            related_requirement_ids=draft.requirement_ids,
+            related_task_ids=draft.task_ids,
+            evidence=_evidence(draft, decisions, requirements, tasks),
         )
+        for index, draft in enumerate(drafts, start=1)
+    ]
 
     criteria = [c.strip() for c in extracted.acceptance_criteria if c.strip()]
     if not criteria:
@@ -155,24 +171,47 @@ def _plan(
 
 def _ground_step(
     item: ExtractedPlanStep,
+    decisions: dict[str, Decision],
     requirements: dict[str, Requirement],
     tasks: dict[str, Task],
-) -> tuple[str, str, list[str], list[str]] | None:
-    req_ids = _keep_known(item.requirement_ids, requirements, kind="requirement")
-    task_ids = _keep_known(item.task_ids, tasks, kind="task")
-    if not req_ids and not task_ids:
+) -> _StepDraft | None:
+    # Sort every cited ID by its prefix: a small model sometimes puts a
+    # DEC- or TSK- ID in the wrong list, and the ID is still meaningful.
+    cited = item.decision_ids + item.requirement_ids + item.task_ids
+    by_prefix: dict[str, list[str]] = {DEC_PREFIX: [], REQ_PREFIX: [], TSK_PREFIX: []}
+    for item_id in cited:
+        prefix = item_id.split("-", 1)[0]
+        if prefix in by_prefix:
+            by_prefix[prefix].append(item_id)
+        else:
+            logger.warning("implementation_plan_dropped_invalid_reference id=%s", item_id)
+    draft = _StepDraft(
+        title=item.title,
+        description=item.description.strip() or item.title,
+        decision_ids=_keep_known(by_prefix[DEC_PREFIX], decisions, kind="decision"),
+        requirement_ids=_keep_known(by_prefix[REQ_PREFIX], requirements, kind="requirement"),
+        task_ids=_keep_known(by_prefix[TSK_PREFIX], tasks, kind="task"),
+    )
+    if not (draft.decision_ids or draft.requirement_ids or draft.task_ids):
         logger.warning("implementation_plan_dropped_step_without_references")
         return None
-    description = item.description.strip() or item.title
-    return item.title, description, req_ids, task_ids
+    return draft
 
 
-def _task_step(task: Task) -> tuple[str, str, list[str], list[str]]:
-    return task.title, task.description, list(task.related_requirement_ids), [task.id]
+def _task_step(task: Task) -> _StepDraft:
+    return _StepDraft(
+        title=task.title,
+        description=task.description,
+        requirement_ids=list(task.related_requirement_ids),
+        task_ids=[task.id],
+    )
 
 
 def _keep_known(
-    candidates: list[str], allowed: dict[str, Requirement] | dict[str, Task], *, kind: str
+    candidates: list[str],
+    allowed: dict[str, Decision] | dict[str, Requirement] | dict[str, Task],
+    *,
+    kind: str,
 ) -> list[str]:
     kept: list[str] = []
     for item_id in candidates:
@@ -188,16 +227,19 @@ def _keep_known(
 
 
 def _evidence(
-    req_ids: list[str],
-    task_ids: list[str],
+    draft: _StepDraft,
+    decisions: dict[str, Decision],
     requirements: dict[str, Requirement],
     tasks: dict[str, Task],
 ) -> list[SourceReference]:
+    """Transcript evidence for a step: what its tasks, requirements and decisions cite."""
     refs: list[SourceReference] = []
-    for req_id in req_ids:
-        refs.append(requirements[req_id].source_reference)
-    for task_id in task_ids:
+    for task_id in draft.task_ids:
         refs.extend(tasks[task_id].source_references)
+    for req_id in draft.requirement_ids:
+        refs.append(requirements[req_id].source_reference)
+    for dec_id in draft.decision_ids:
+        refs.append(decisions[dec_id].source_reference)
     unique: list[SourceReference] = []
     for ref in refs:
         if ref not in unique:

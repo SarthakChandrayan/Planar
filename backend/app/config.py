@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     max_transcript_chars: int = Field(default=300_000, gt=0)
 
     runs_dir: Path = _BACKEND_DIR / "data" / "runs"
+    # Example transcripts offered in the UI ("Try a sample").
+    samples_dir: Path = _PROJECT_ROOT / "samples"
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["text", "json"] = "text"

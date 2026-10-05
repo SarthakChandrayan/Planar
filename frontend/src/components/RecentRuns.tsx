@@ -1,9 +1,11 @@
+import { formatElapsed } from '../formatElapsed'
 import type { RunSummary } from '../types/run'
+import { TrashIcon } from './icons'
 
 const STATUS_LABEL: Record<RunSummary['status'], string> = {
   queued: 'Queued',
   running: 'Running',
-  succeeded: 'Done',
+  succeeded: 'Ready',
   failed: 'Failed',
   cancelled: 'Cancelled',
 }
@@ -21,6 +23,13 @@ function formatWhen(iso: string): string {
   })
 }
 
+function duration(run: RunSummary): string | null {
+  if (!run.started_at || !run.finished_at) {
+    return null
+  }
+  return formatElapsed(new Date(run.finished_at).getTime() - new Date(run.started_at).getTime())
+}
+
 export function RecentRuns({
   runs,
   onOpen,
@@ -34,40 +43,51 @@ export function RecentRuns({
     return null
   }
   return (
-    <section className="section recent-runs" aria-labelledby="recent-heading">
-      <div className="section-head">
-        <h3 id="recent-heading">Recent runs</h3>
-        <span>{runs.length}</span>
-      </div>
-      <ul className="run-list">
-        {runs.map((run) => (
-          <li key={run.id}>
-            <button
-              type="button"
-              className="run-open"
-              onClick={() => onOpen(run.id)}
-              disabled={run.status !== 'succeeded'}
-              title={run.error ?? undefined}
-            >
-              <span className="run-title">{run.title}</span>
-              <span className="run-meta">
-                {formatWhen(run.created_at)} · {run.transcript_chars.toLocaleString()} chars
-              </span>
-              <span className={`badge badge-plain run-status run-status-${run.status}`}>
-                {STATUS_LABEL[run.status]}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="button-ghost run-delete"
-              aria-label={`Delete ${run.title}`}
-              onClick={() => onDelete(run.id)}
-              disabled={run.status === 'running' || run.status === 'queued'}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
+    <section className="recent" aria-labelledby="recent-heading">
+      <h2 id="recent-heading" className="section-title">
+        Recent analyses
+      </h2>
+      <ul className="run-grid">
+        {runs.map((run) => {
+          const active = run.status === 'running' || run.status === 'queued'
+          const openable = active || run.status === 'succeeded'
+          const took = duration(run)
+          return (
+            <li key={run.id} className="run-card card">
+              <button
+                type="button"
+                className="run-open"
+                onClick={() => onOpen(run.id)}
+                disabled={!openable}
+                title={run.error ?? undefined}
+              >
+                <span className={`run-status is-${run.status}`}>
+                  <span className="status-dot" aria-hidden="true" />
+                  {STATUS_LABEL[run.status]}
+                </span>
+                <span className="run-title">{run.title}</span>
+                <span className="run-meta">
+                  {formatWhen(run.created_at)}
+                  {took ? ` · took ${took}` : null}
+                  {active ? ' · click to watch' : null}
+                </span>
+                {run.status === 'failed' && run.error ? (
+                  <span className="run-error">{run.error}</span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className="icon-button run-delete"
+                aria-label={`Delete ${run.title}`}
+                title="Delete"
+                onClick={() => onDelete(run.id)}
+                disabled={active}
+              >
+                <TrashIcon size={15} />
+              </button>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

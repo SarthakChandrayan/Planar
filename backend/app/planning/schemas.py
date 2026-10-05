@@ -21,6 +21,7 @@ class ExtractionModel(BaseModel):
 class ExtractedPlanStep(ExtractionModel):
     title: str = Field(min_length=1)
     description: str = ""
+    decision_ids: ItemIds = Field(default_factory=list)
     requirement_ids: ItemIds = Field(default_factory=list)
     task_ids: ItemIds = Field(default_factory=list)
 
@@ -48,10 +49,11 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "title": _STRING,
                     "description": _STRING,
+                    "decision_ids": _IDS,
                     "requirement_ids": _IDS,
                     "task_ids": _IDS,
                 },
-                "required": ["title", "description", "requirement_ids", "task_ids"],
+                "required": ["title", "description", "decision_ids", "requirement_ids", "task_ids"],
             },
         },
         "acceptance_criteria": {"type": "array", "items": _STRING, "maxItems": 6},

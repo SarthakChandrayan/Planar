@@ -1,5 +1,7 @@
 """Render a finished run as a Markdown report (for docs, tickets, or chat)."""
 
+import re
+
 from app.domain import ImplementationPlan, MeetingAnalysis, SourceReference
 from app.runs import Run
 
@@ -16,6 +18,8 @@ def render_markdown(run: Run) -> str:
         lines += _analysis(run.analysis)
     if run.plan is not None:
         lines += _plan(run.plan)
+        if run.analysis is not None and run.plan.steps:
+            lines += plan_map_mermaid(run.analysis, run.plan)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -88,11 +92,99 @@ def _analysis(analysis: MeetingAnalysis) -> list[str]:
 def _plan(plan: ImplementationPlan) -> list[str]:
     out = [f"## Implementation plan: {plan.title}", "", plan.summary, ""]
     for index, step in enumerate(plan.steps, start=1):
-        refs = step.related_requirement_ids + step.related_task_ids
+        refs = step.related_decision_ids + step.related_requirement_ids + step.related_task_ids
         suffix = f" _({', '.join(refs)})_" if refs else ""
         out += [f"{index}. **{step.title}**{suffix}", f"   {step.description}"]
     if plan.acceptance_criteria:
         out += ["", "### Done when", ""]
         out += [f"- [ ] {criterion}" for criterion in plan.acceptance_criteria]
     out.append("")
+    return out
+
+
+_MAX_LABEL_CHARS = 48
+
+
+def _node_id(item_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "_", item_id)
+
+
+def _label(text: str) -> str:
+    text = " ".join(text.split())
+    if len(text) > _MAX_LABEL_CHARS:
+        text = text[: _MAX_LABEL_CHARS - 1].rstrip() + "…"
+    return text.replace('"', "#quot;")
+
+
+def plan_map_mermaid(analysis: MeetingAnalysis, plan: ImplementationPlan) -> list[str]:
+    """The plan map as a Mermaid flowchart: decisions -> requirements -> steps -> owners.
+
+    Renders as a diagram on GitHub, GitLab, Notion, Obsidian and most Markdown
+    viewers. Built from the validated record, so every arrow is a real link.
+    """
+    requirements = {r.id: r for r in analysis.requirements}
+    decisions = {d.id: d for d in analysis.decisions}
+    tasks = {t.id: t for t in analysis.tasks}
+    edges: list[tuple[str, str]] = []
+
+    def link(a: str, b: str) -> None:
+        if (a, b) not in edges:
+            edges.append((a, b))
+
+    req_ids: list[str] = []
+    dec_ids: list[str] = []
+    owners: list[str] = []
+    for step in plan.steps:
+        for req_id in step.related_requirement_ids:
+            if req_id in requirements:
+                if req_id not in req_ids:
+                    req_ids.append(req_id)
+                link(req_id, step.id)
+        for dec_id in step.related_decision_ids:
+            if dec_id in decisions:
+                if dec_id not in dec_ids:
+                    dec_ids.append(dec_id)
+                link(dec_id, step.id)
+        for task_id in step.related_task_ids:
+            task = tasks.get(task_id)
+            if task is None:
+                continue
+            owner = task.owner or "Unassigned"
+            if owner not in owners:
+                owners.append(owner)
+            link(step.id, f"owner:{owner}")
+    for req_id in req_ids:
+        for dec_id in requirements[req_id].related_decision_ids:
+            if dec_id in decisions:
+                if dec_id not in dec_ids:
+                    dec_ids.append(dec_id)
+                link(dec_id, req_id)
+
+    def node(key: str) -> str:
+        return _node_id(key.replace("owner:", "OWNER_"))
+
+    out = ["## Plan map", "", "```mermaid", "flowchart LR"]
+    if dec_ids:
+        out.append('  subgraph why["Decisions"]')
+        out += [f'    {node(d)}["{d}: {_label(decisions[d].statement)}"]' for d in dec_ids]
+        out.append("  end")
+    if req_ids:
+        out.append('  subgraph what["Requirements"]')
+        out += [f'    {node(r)}["{r}: {_label(requirements[r].statement)}"]' for r in req_ids]
+        out.append("  end")
+    out.append('  subgraph how["Plan steps"]')
+    out += [
+        f'    {node(step.id)}["{i}. {_label(step.title)}"]'
+        for i, step in enumerate(plan.steps, start=1)
+    ]
+    out.append("  end")
+    if owners:
+        out.append('  subgraph who["Owners"]')
+        out += [f'    {node("owner:" + o)}(["{_label(o)}"])' for o in owners]
+        out.append("  end")
+    out += [f"  {node(a)} --> {node(b)}" for a, b in edges]
+    out += ["```", ""]
+    unlinked = len(decisions) - len(dec_ids)
+    if unlinked > 0:
+        out += [f"_{unlinked} other decision(s) apply to the plan as a whole._", ""]
     return out

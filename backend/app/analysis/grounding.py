@@ -191,6 +191,20 @@ def similarity(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+def shared_words(left: str, right: str) -> tuple[int, float]:
+    """Distinctive words two texts share, and that count over the shorter text.
+
+    Unlike Jaccard, this does not penalise a short decision for being
+    compared with a long requirement that restates and extends it.
+    """
+    a = _expand(_tokens(left))
+    b = _expand(_tokens(right))
+    if not a or not b:
+        return 0, 0.0
+    shared = len(a & b)
+    return shared, shared / min(len(a), len(b))
+
+
 def _tokens(text: str) -> set[str]:
     words = re.findall(r"[a-z0-9]+", text.lower())
     return {w for w in words if len(w) >= 2 and w not in _STOPWORDS}

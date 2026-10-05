@@ -1,57 +1,53 @@
 import { useState } from 'react'
 import type { SourceReference } from '../types/analysis'
+import { CheckIcon, CopyIcon, QuoteIcon } from './icons'
 
-interface EvidenceProps {
-  refs: SourceReference[]
-}
-
-export function Evidence({ refs }: EvidenceProps) {
-  const sources = refs.filter((ref) => ref.excerpt.trim())
-  if (sources.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="evidence-stack">
-      {sources.map((ref, index) => (
-        <EvidenceQuote
-          key={`${index}-${ref.line_start ?? ''}-${ref.excerpt.slice(0, 24)}`}
-          source={ref}
-          index={index}
-          total={sources.length}
-        />
-      ))}
-    </div>
-  )
-}
-
-function locationLabel(ref: SourceReference): string | null {
+function locationLabel(ref: SourceReference): string {
   const parts: string[] = []
   if (ref.line_start != null) {
     parts.push(
       ref.line_end != null && ref.line_end !== ref.line_start
-        ? `L${ref.line_start}–${ref.line_end}`
-        : `L${ref.line_start}`,
+        ? `Lines ${ref.line_start}–${ref.line_end}`
+        : `Line ${ref.line_start}`,
     )
   }
   if (ref.speaker) {
     parts.push(ref.speaker)
   }
-  return parts.length > 0 ? parts.join(' · ') : null
+  return parts.length > 0 ? parts.join(' · ') : 'Source'
 }
 
-function EvidenceQuote({
-  source,
-  index,
-  total,
-}: {
-  source: SourceReference
-  index: number
-  total: number
-}) {
+/** Where in the transcript an item came from; the quote opens on demand. */
+export function Evidence({ refs }: { refs: SourceReference[] }) {
+  const sources = refs.filter((ref) => ref.excerpt.trim())
+  const [open, setOpen] = useState<number | null>(null)
+  if (sources.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="evidence">
+      <div className="evidence-toggles">
+        {sources.map((ref, index) => (
+          <button
+            key={`${index}-${ref.line_start ?? ref.excerpt.slice(0, 12)}`}
+            type="button"
+            className={open === index ? 'evidence-toggle is-open' : 'evidence-toggle'}
+            aria-expanded={open === index}
+            onClick={() => setOpen(open === index ? null : index)}
+          >
+            <QuoteIcon size={13} />
+            {locationLabel(ref)}
+          </button>
+        ))}
+      </div>
+      {open != null && sources[open] ? <Quote source={sources[open]} /> : null}
+    </div>
+  )
+}
+
+function Quote({ source }: { source: SourceReference }) {
   const [copied, setCopied] = useState(false)
-  const base = total > 1 ? `Source ${index + 1}` : 'Source'
-  const location = locationLabel(source)
   const excerpt = source.excerpt.trim()
 
   async function copy() {
@@ -65,19 +61,17 @@ function EvidenceQuote({
   }
 
   return (
-    <details className="evidence">
-      <summary>
-        {base}
-        {location ? <span className="evidence-location"> · {location}</span> : null}
-      </summary>
-      <div className="evidence-panel">
-        <blockquote className="evidence-quote">{excerpt}</blockquote>
-        <div className="evidence-actions">
-          <button type="button" className="button-ghost" onClick={() => void copy()}>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      </div>
-    </details>
+    <figure className="quote">
+      <blockquote>{excerpt}</blockquote>
+      <button
+        type="button"
+        className="icon-button quote-copy"
+        onClick={() => void copy()}
+        aria-label="Copy quote"
+        title={copied ? 'Copied' : 'Copy quote'}
+      >
+        {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+      </button>
+    </figure>
   )
 }

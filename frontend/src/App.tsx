@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from './api/client'
 import {
   cancelRun,
@@ -6,21 +6,25 @@ import {
   getEstimate,
   getReadiness,
   getRun,
+  getSample,
   listRuns,
-  reportUrl,
+  listSamples,
   startRun,
 } from './api/runs'
-import { AnalysisReport } from './components/AnalysisReport'
-import { ForgeClock, type ForgeStage } from './components/ForgeClock'
-import { MeetingInput, MIN_TRANSCRIPT_CHARS } from './components/MeetingInput'
+import { Composer, MIN_TRANSCRIPT_CHARS } from './components/Composer'
+import { Header } from './components/Header'
+import { AlertIcon } from './components/icons'
 import { RecentRuns } from './components/RecentRuns'
-import { formatApprox, formatElapsed } from './formatElapsed'
+import { Report } from './components/Report'
+import { RunProgress } from './components/RunProgress'
+import { formatApprox } from './formatElapsed'
 import {
   isFinished,
   type Estimate,
   type Readiness,
   type Run,
   type RunSummary,
+  type SampleSummary,
 } from './types/run'
 import './App.css'
 
@@ -48,13 +52,6 @@ function writeActiveRun(id: string | null) {
   }
 }
 
-function durationOf(run: Run): number | null {
-  if (!run.started_at || !run.finished_at) {
-    return null
-  }
-  return new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()
-}
-
 function messageFrom(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback
 }
@@ -67,10 +64,9 @@ function App() {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [readiness, setReadiness] = useState<Readiness | null>(null)
   const [recent, setRecent] = useState<RunSummary[]>([])
+  const [samples, setSamples] = useState<SampleSummary[]>([])
+  const [loadingSample, setLoadingSample] = useState<string | null>(null)
   const [estimate, setEstimate] = useState<Estimate | null>(null)
-  const startedAtRef = useRef<number | null>(null)
-
-  const loading = activeRun != null
 
   const refreshRecent = useCallback(() => {
     listRuns()
@@ -91,34 +87,46 @@ function App() {
         setResult(run)
         setTranscript(run.transcript)
         setError(null)
+        window.scrollTo({ top: 0 })
       } else if (run.status === 'failed') {
-        setError(run.error ?? 'The run failed.')
+        setError(run.error ?? 'The analysis failed.')
         checkReadiness()
       } else if (run.status === 'cancelled') {
-        setError('Run cancelled.')
+        setError('Analysis cancelled.')
       }
     },
     [checkReadiness, refreshRecent],
   )
 
-  // Initial load: readiness, history, and resume a run left in progress.
+  const watchRun = useCallback(
+    (run: Run) => {
+      if (isFinished(run.status)) {
+        finishRun(run)
+        return
+      }
+      writeActiveRun(run.id)
+      setResult(null)
+      setError(null)
+      setTranscript(run.transcript)
+      setActiveRun(run)
+    },
+    [finishRun],
+  )
+
+  // First load: model status, history, samples, and resume a run left in progress.
   useEffect(() => {
     checkReadiness()
     refreshRecent()
+    listSamples()
+      .then(setSamples)
+      .catch(() => setSamples([]))
     const resumeId = readActiveRun()
     if (resumeId) {
       getRun(resumeId)
-        .then((run) => {
-          if (isFinished(run.status)) {
-            finishRun(run)
-          } else {
-            setTranscript(run.transcript)
-            setActiveRun(run)
-          }
-        })
+        .then(watchRun)
         .catch(() => writeActiveRun(null))
     }
-  }, [checkReadiness, finishRun, refreshRecent])
+  }, [checkReadiness, refreshRecent, watchRun])
 
   // Poll the active run until it finishes.
   const activeId = activeRun?.id ?? null
@@ -143,7 +151,7 @@ function App() {
         if (caught instanceof ApiError && caught.status === 404) {
           setActiveRun(null)
           writeActiveRun(null)
-          setError('The run was lost. The server may have been reset; start it again.')
+          setError('The analysis was lost. The server may have been restarted; start it again.')
           return
         }
         // Transient (backend restarting): keep polling.
@@ -156,6 +164,19 @@ function App() {
       window.clearTimeout(timer)
     }
   }, [activeId, finishRun])
+
+  // Wall clock while a run is active, measured from the server's start time.
+  const anchor = activeRun ? activeRun.started_at ?? activeRun.created_at : null
+  useEffect(() => {
+    if (!anchor) {
+      return
+    }
+    const startedAt = new Date(anchor).getTime()
+    const tick = () => setElapsedMs(Date.now() - startedAt)
+    tick()
+    const id = window.setInterval(tick, 500)
+    return () => window.clearInterval(id)
+  }, [anchor])
 
   // Expected duration for the pasted transcript, from this machine's past runs.
   const transcriptChars = transcript.trim().length
@@ -176,23 +197,6 @@ function App() {
     }
   }, [transcriptChars, longEnough])
 
-  // Wall clock while a run is active, measured from the server's start time.
-  useEffect(() => {
-    if (!activeRun) {
-      return
-    }
-    const anchor = activeRun.started_at ?? activeRun.created_at
-    startedAtRef.current = new Date(anchor).getTime()
-    const tick = () => {
-      if (startedAtRef.current != null) {
-        setElapsedMs(Date.now() - startedAtRef.current)
-      }
-    }
-    tick()
-    const id = window.setInterval(tick, 250)
-    return () => window.clearInterval(id)
-  }, [activeRun])
-
   async function handleAnalyze() {
     const cleaned = transcript.trim()
     if (!cleaned) {
@@ -204,13 +208,12 @@ function App() {
       return
     }
     setError(null)
-    setResult(null)
     try {
       const run = await startRun(cleaned)
-      writeActiveRun(run.id)
       setElapsedMs(0)
-      setActiveRun(run)
+      watchRun(run)
       refreshRecent()
+      window.scrollTo({ top: 0 })
     } catch (caught) {
       setError(messageFrom(caught, 'Could not start the analysis.'))
       checkReadiness()
@@ -224,7 +227,7 @@ function App() {
     try {
       finishRun(await cancelRun(activeRun.id))
     } catch (caught) {
-      setError(messageFrom(caught, 'Could not cancel the run.'))
+      setError(messageFrom(caught, 'Could not cancel the analysis.'))
     }
   }
 
@@ -236,14 +239,16 @@ function App() {
         setTranscript(run.transcript)
         setError(null)
         window.scrollTo({ top: 0 })
+      } else if (!isFinished(run.status)) {
+        watchRun(run)
       }
     } catch (caught) {
-      setError(messageFrom(caught, 'Could not open that run.'))
+      setError(messageFrom(caught, 'Could not open that analysis.'))
     }
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Delete this run?')) {
+    if (!window.confirm('Delete this analysis? This cannot be undone.')) {
       return
     }
     try {
@@ -252,119 +257,102 @@ function App() {
         setResult(null)
       }
     } catch (caught) {
-      setError(messageFrom(caught, 'Could not delete that run.'))
+      setError(messageFrom(caught, 'Could not delete that analysis.'))
     }
     refreshRecent()
   }
 
-  function handleReset() {
-    if (result && !window.confirm('Clear the current engineering record?')) {
+  async function handleLoadSample(id: string) {
+    setLoadingSample(id)
+    try {
+      const sample = await getSample(id)
+      setTranscript(sample.transcript)
+      setError(null)
+    } catch (caught) {
+      setError(messageFrom(caught, 'Could not load that sample.'))
+    } finally {
+      setLoadingSample(null)
+    }
+  }
+
+  function goHome() {
+    if (activeRun) {
       return
     }
     setResult(null)
     setError(null)
     setTranscript('')
+    refreshRecent()
+    window.scrollTo({ top: 0 })
   }
 
-  const stage: ForgeStage | null = activeRun
-    ? {
-        label:
-          activeRun.status === 'queued'
-            ? 'Queued: waiting for the model'
-            : activeRun.progress.stage,
-        step: activeRun.progress.step,
-        total: activeRun.progress.total_steps,
-        tokens: activeRun.progress.stage_tokens,
-        etaSeconds: activeRun.progress.eta_seconds ?? null,
-      }
-    : null
+  const estimateLabel =
+    estimate && longEnough
+      ? `${formatApprox(estimate.seconds)}${
+          estimate.basis === 'default' ? ' (rough estimate)' : ' on this machine'
+        }`
+      : null
 
-  const showRecord = result?.analysis != null && !loading
-  const input = (
-    <MeetingInput
-      value={transcript}
-      disabled={loading}
-      elapsedLabel={loading ? formatElapsed(elapsedMs) : null}
-      error={loading ? null : error}
-      estimateLabel={
-        estimate && longEnough
-          ? `${formatApprox(estimate.seconds)}${
-              estimate.basis === 'default' ? ' (rough estimate)' : ' on this machine'
-            }`
-          : null
-      }
-      onChange={(value) => {
-        setTranscript(value)
-        if (error) {
-          setError(null)
-        }
-      }}
-      onSubmit={() => {
-        void handleAnalyze()
-      }}
-    />
-  )
+  let view
+  if (activeRun) {
+    view = (
+      <RunProgress run={activeRun} elapsedMs={elapsedMs} onCancel={() => void handleCancel()} />
+    )
+  } else if (result?.analysis) {
+    view = <Report key={result.id} run={result} onBack={goHome} />
+  } else {
+    view = (
+      <>
+        <div className="hero">
+          <h1>Turn a meeting into a plan.</h1>
+          <p>
+            Paste a transcript. Planar pulls out the decisions, requirements, tasks, risks and
+            open questions, links each one to the lines it came from, and drafts an
+            implementation plan. Nothing leaves this computer.
+          </p>
+        </div>
+        <Composer
+          value={transcript}
+          error={error}
+          estimateLabel={estimateLabel}
+          samples={samples}
+          loadingSample={loadingSample}
+          onChange={(value) => {
+            setTranscript(value)
+            if (error) {
+              setError(null)
+            }
+          }}
+          onSubmit={() => void handleAnalyze()}
+          onLoadSample={(id) => void handleLoadSample(id)}
+        />
+        <RecentRuns
+          runs={recent}
+          onOpen={(id) => void handleOpen(id)}
+          onDelete={(id) => void handleDelete(id)}
+        />
+      </>
+    )
+  }
 
   return (
     <div className="app">
-      <header className="site-header">
-        <h1 className="brand">Planar</h1>
-        <span className="brand-meta">
-          Local{readiness?.model ? ` · ${readiness.model}` : ''}
-        </span>
-      </header>
-
-      <main>
+      <Header readiness={readiness} onHome={goHome} />
+      <main className="main">
         {readiness?.status === 'unavailable' ? (
-          <div className="readiness-banner" role="alert">
-            <p>
-              <strong>Model not ready.</strong> {readiness.detail}
-            </p>
-            <button type="button" className="button-ghost" onClick={checkReadiness}>
-              Check again
-            </button>
+          <div className="callout callout-danger" role="alert">
+            <AlertIcon size={18} />
+            <div>
+              <p>
+                <strong>The local model isn’t ready.</strong> {readiness.detail}
+              </p>
+              <button type="button" className="link-button" onClick={checkReadiness}>
+                Check again
+              </button>
+            </div>
           </div>
         ) : null}
-
-        {loading ? (
-          <ForgeClock
-            elapsedMs={elapsedMs}
-            stage={stage}
-            onCancel={() => void handleCancel()}
-          />
-        ) : null}
-
-        {showRecord ? (
-          <details className="source-drawer">
-            <summary>
-              Transcript · {transcript.length.toLocaleString()} chars
-            </summary>
-            {input}
-          </details>
-        ) : (
-          input
-        )}
-
-        {showRecord && result?.analysis ? (
-          <AnalysisReport
-            key={result.id}
-            meetingName={result.title}
-            analysis={result.analysis}
-            durationMs={durationOf(result)}
-            initialPlan={result.plan}
-            warnings={result.warnings}
-            reportHref={reportUrl(result.id)}
-            onReset={handleReset}
-          />
-        ) : null}
-
-        {!loading && !showRecord ? (
-          <RecentRuns
-            runs={recent}
-            onOpen={(id) => void handleOpen(id)}
-            onDelete={(id) => void handleDelete(id)}
-          />
-        ) : null}
+        {view}
       </main>
     </div>
   )

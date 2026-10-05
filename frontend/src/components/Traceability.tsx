@@ -1,6 +1,7 @@
 import type { TraceEntry } from '../trace'
 import { useTraceNav } from './TraceContext'
 
+/** Links to related items; clicking one jumps to it. */
 export function Traceability({ links }: { links: TraceEntry[] }) {
   const goTo = useTraceNav()
   if (links.length === 0) {
@@ -8,24 +9,21 @@ export function Traceability({ links }: { links: TraceEntry[] }) {
   }
 
   return (
-    <div className="traceability">
-      <p className="field-caption">Traceability</p>
-      <ul className="trace-links">
-        {links.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              className="trace-link"
-              onClick={() => goTo(item.id)}
-              aria-label={`Go to ${item.kindLabel} ${item.id}`}
-            >
-              <span className="trace-kind">{item.kindLabel}</span>
-              <span className="artifact-id">{item.id}</span>
-              <span className="trace-label">{item.label}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="links" aria-label="Related items">
+      {links.map((item) => (
+        <li key={item.id}>
+          <button
+            type="button"
+            className={`link-chip kind-${item.kind}`}
+            onClick={() => goTo(item.id)}
+            title={`${item.kindLabel} ${item.id}: ${item.label}`}
+          >
+            <span className="link-dot" aria-hidden="true" />
+            <span className="link-id">{item.id}</span>
+            <span className="link-label">{item.label}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }

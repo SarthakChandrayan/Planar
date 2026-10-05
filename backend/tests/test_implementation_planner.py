@@ -154,3 +154,35 @@ def test_empty_record_skips_the_model() -> None:
 def test_invalid_output_raises_plan_validation_error() -> None:
     with pytest.raises(PlanValidationError):
         ImplementationPlanner(ScriptedLLM({"plan": "not json"})).plan(_analysis())
+
+
+def test_steps_cite_decisions_and_misfiled_ids_are_sorted_by_prefix() -> None:
+    answer = dict(
+        PLAN,
+        steps=[
+            {
+                "title": "Idempotency middleware on Postgres",
+                "description": "",
+                "decision_ids": ["DEC-001", "DEC-404"],
+                # A decision ID in the wrong list is moved, not dropped.
+                "requirement_ids": ["REQ-001", "DEC-001", "TSK-001"],
+                "task_ids": [],
+            },
+            {
+                "title": "Apply the Postgres decision",
+                "description": "Only a decision is cited.",
+                "decision_ids": ["DEC-001"],
+                "requirement_ids": [],
+                "task_ids": [],
+            },
+        ],
+    )
+    plan = ImplementationPlanner(ScriptedLLM({"plan": answer})).plan(_analysis())
+    first, second = plan.steps[0], plan.steps[1]
+
+    assert first.related_decision_ids == ["DEC-001"]
+    assert first.related_requirement_ids == ["REQ-001"]
+    assert first.related_task_ids == ["TSK-001"]
+    # A decision-only step is kept, with the decision's transcript evidence.
+    assert second.related_decision_ids == ["DEC-001"]
+    assert second.evidence[0].line_start == 30

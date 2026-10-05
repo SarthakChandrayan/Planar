@@ -195,11 +195,12 @@ class ImplementationPlanStep(DomainModel):
     id: StepId
     title: NonEmptyString
     description: NonEmptyString
+    related_decision_ids: list[DecisionId] = Field(default_factory=list)
     related_requirement_ids: list[RequirementId] = Field(default_factory=list)
     related_task_ids: list[TaskId] = Field(default_factory=list)
     evidence: list[SourceReference] = Field(min_length=1)
 
-    @field_validator("related_requirement_ids", "related_task_ids")
+    @field_validator("related_decision_ids", "related_requirement_ids", "related_task_ids")
     @classmethod
     def relationship_ids_must_be_unique(
         cls, value: list[str], info: ValidationInfo

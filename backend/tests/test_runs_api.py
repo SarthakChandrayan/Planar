@@ -202,3 +202,20 @@ def test_title_comes_from_header_or_short_first_line(tmp_path: Path) -> None:
     assert _title_from("# Weekly sync\nLin: hi") == "Weekly sync"
     assert _title_from("Lin: We will ship it.\nSam: Agreed.") == "Untitled meeting"
     assert _title_from("x" * 300) == "Untitled meeting"
+
+
+def test_markdown_report_includes_plan_map_diagram() -> None:
+    from app.report import plan_map_mermaid
+    from tests.test_implementation_planner import PLAN, _analysis
+
+    analysis = _analysis()
+    plan = ImplementationPlanner(ScriptedLLM({"plan": PLAN})).plan(analysis)
+    lines = plan_map_mermaid(analysis, plan)
+    text = "\n".join(lines)
+
+    assert lines[:4] == ["## Plan map", "", "```mermaid", "flowchart LR"]
+    assert 'REQ_001["REQ-001: POST /v1/charges must honor an Idempotency-Key…"]' in text
+    assert "REQ_001 --> STEP_001" in text
+    assert "STEP_001 --> OWNER_Priya" in text
+    assert "DEC_001 --> REQ_001" in text  # requirement's own decision link
+    assert text.count("```") == 2

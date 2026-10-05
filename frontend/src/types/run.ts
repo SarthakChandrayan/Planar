@@ -31,11 +31,28 @@ export interface RunSummary {
   warnings: string[]
 }
 
+export interface StageTiming {
+  stage: string
+  seconds: number
+  kilotokens: number
+}
+
 export interface Run extends RunSummary {
   transcript: string
   include_plan: boolean
   analysis: MeetingAnalysis | null
   plan: ImplementationPlan | null
+  stage_timings?: StageTiming[]
+}
+
+export interface SampleSummary {
+  id: string
+  title: string
+  words: number
+}
+
+export interface Sample extends SampleSummary {
+  transcript: string
 }
 
 export interface Readiness {
