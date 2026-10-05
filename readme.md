@@ -142,6 +142,8 @@ Other levers, in `.env`:
 | `GET` | `/api/runs/estimate?chars=N` | Expected duration for a transcript of N characters |
 | `GET` | `/api/runs/{id}` | Status, progress (incl. `eta_seconds`), and result when done |
 | `POST` | `/api/runs/{id}/cancel` | Cancel (stops at the next token) |
+| `POST` | `/api/runs/{id}/plan` | Write a new plan in the background; replaces the saved one when done |
+| `POST` | `/api/runs/{id}/plan/cancel` | Stop writing a new plan (the current plan stays) |
 | `DELETE` | `/api/runs/{id}` | Delete a run |
 | `GET` | `/api/runs/{id}/report.md` | Markdown report |
 | `POST` | `/api/meetings/analyze` | Synchronous analysis (blocks for minutes) |

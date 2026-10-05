@@ -108,3 +108,67 @@ def test_evidence_is_one_passage_not_scattered_lines() -> None:
     result = grounder.ground("Store drafts in SQLite on the device", [3, 9])
     assert result is not None
     assert [line.number for line in result.lines] == [3]
+
+
+def test_markdown_formatting_is_stripped_and_speakers_found() -> None:
+    numbered = NumberedTranscript(
+        "## 10. Action Items\n"
+        "**Sarah:** Finalize the **premium** feature list.\n"
+        "* Ananya — CEO\n"
+        "- __Rahul__: Prepare the campaign.\n"
+        "2. The discount is `15%` for 30 days."
+    )
+    lines = numbered.lines
+    assert lines[0].text == "10. Action Items"
+    assert (lines[1].speaker, lines[1].content) == ("Sarah", "Finalize the premium feature list.")
+    assert lines[2].text == "Ananya — CEO" and lines[2].speaker is None
+    assert lines[3].speaker == "Rahul"
+    assert lines[4].text == "2. The discount is 15% for 30 days."
+
+
+def test_meeting_notes_bracket_names_are_speakers_not_timestamps() -> None:
+    numbered = NumberedTranscript(
+        "[Ellie Sarmadi] Monetize Chat: Develop tiered monetization levels.\n"
+        "[The group] Select pilot features: Brainstorm the features.\n"
+        "[00:12:03] Maya: We will ship it.\n"
+        "[12] Footnote style reference."
+    )
+    lines = numbered.lines
+    assert lines[0].speaker == "Ellie Sarmadi"
+    assert lines[0].content == "Monetize Chat: Develop tiered monetization levels."
+    assert lines[1].speaker == "The group"
+    assert lines[2].speaker == "Maya"
+    assert lines[3].speaker is None
+
+
+def test_notes_headings_with_two_colons_are_not_speakers() -> None:
+    numbered = NumberedTranscript(
+        "Monetization Layers: Subscriptions, Workouts, and Live Streams: Ellie outlined it.\n"
+        "Maya: We will ship on Friday."
+    )
+    assert numbered.lines[0].speaker is None
+    assert numbered.lines[1].speaker == "Maya"
+
+
+def test_hedged_lines_and_coverage() -> None:
+    from app.analysis.grounding import coverage, is_hedged
+
+    assert is_hedged("Karan estimated the team could support approximately 50 accounts.")
+    assert is_hedged("Maybe we should add Redis.")
+    assert not is_hedged("The sync API must accept per-field timestamps.")
+    # Firm wording wins even when the line also hedges.
+    assert not is_hedged("Payments could fail, so the handler must retry.")
+    assert coverage("launch on November 4", "The November 4 launch date") == 1.0
+    assert coverage("refund policy", "The November 4 launch date") == 0.0
+
+
+def test_joined_evidence_never_doubles_ellipses() -> None:
+    from app.analysis.analyzer import _source
+    from app.analysis.grounding import Grounding
+
+    long_line = "Ana: " + " ".join(f"Filler sentence number {n}." for n in range(12)) + " Pricing caused confusion."
+    numbered = NumberedTranscript(long_line + "\n" + long_line.replace("Pricing", "Value"))
+    grounder = Grounder(numbered)
+    ref = _source(Grounding(tuple(numbered.lines), 2.0, False), grounder, "pricing confusion value")
+    assert "… …" not in ref.excerpt
+    assert ref.excerpt.count("…") >= 1

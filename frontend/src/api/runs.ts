@@ -31,6 +31,15 @@ export function cancelRun(id: string): Promise<Run> {
   return request<Run>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
 }
 
+/** Start writing a new plan in the background; it replaces the saved plan when done. */
+export function regeneratePlan(id: string): Promise<Run> {
+  return request<Run>(`/api/runs/${encodeURIComponent(id)}/plan`, { method: 'POST' })
+}
+
+export function cancelPlan(id: string): Promise<Run> {
+  return request<Run>(`/api/runs/${encodeURIComponent(id)}/plan/cancel`, { method: 'POST' })
+}
+
 export function deleteRun(id: string): Promise<void> {
   return request<void>(`/api/runs/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

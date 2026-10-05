@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.domain import ImplementationPlan, MeetingAnalysis
 from app.eta import (
     HISTORY_RUNS,
+    PLAN_STAGE,
     EtaModel,
     StageTiming,
     chunk_count,
@@ -57,6 +58,24 @@ class RunProgress(BaseModel):
     eta_seconds: int | None = None
 
 
+class PlanJobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    FAILED = "failed"
+
+
+class PlanJob(BaseModel):
+    """A "regenerate plan" request on a finished run. Gone once it succeeds."""
+
+    status: PlanJobStatus
+    version: int
+    requested_at: datetime
+    started_at: datetime | None = None
+    tokens: int = 0
+    eta_seconds: int | None = None
+    error: str | None = None
+
+
 class RunSummary(BaseModel):
     id: str
     title: str
@@ -77,6 +96,9 @@ class Run(RunSummary):
     plan: ImplementationPlan | None = None
     # How long each stage took; feeds future time estimates.
     stage_timings: list[StageTiming] = Field(default_factory=list)
+    # 1 for the plan made with the analysis; +1 per regeneration.
+    plan_version: int = 1
+    plan_job: PlanJob | None = None
 
     def summary(self) -> RunSummary:
         return RunSummary.model_validate(self.model_dump(include=set(RunSummary.model_fields)))
@@ -88,6 +110,10 @@ class RunCancelled(Exception):
 
 class RunNotFound(Exception):
     pass
+
+
+class RunNotReady(Exception):
+    """The run can't take this action now (not finished, or already busy)."""
 
 
 class Estimate(BaseModel):
@@ -119,8 +145,29 @@ class RunContext:
             raise RunCancelled()
 
 
+class PlanContext:
+    """Handed to the plan runner: counts tokens and checks for cancellation."""
+
+    def __init__(self, manager: "RunManager", run_id: str) -> None:
+        self._manager = manager
+        self._run_id = run_id
+
+    def stage(self, label: str, step: int, total: int) -> None:
+        self.check_cancelled()
+
+    def tokens(self, count: int) -> None:
+        self.check_cancelled()
+        self._manager._update_plan_tokens(self._run_id, count)
+
+    def check_cancelled(self) -> None:
+        if self._manager._is_cancel_requested(_plan_key(self._run_id)):
+            raise RunCancelled()
+
+
 # Fills run.analysis / run.plan. Raises to fail the run.
 Runner = Callable[[Run, RunContext], tuple[MeetingAnalysis, ImplementationPlan | None]]
+# Writes a new plan for a finished run; the int is the new plan version.
+PlanRunner = Callable[[Run, PlanContext, int], ImplementationPlan]
 ErrorMessage = Callable[[Exception], str]
 
 
@@ -131,9 +178,11 @@ class RunManager:
         runner: Runner,
         error_message: ErrorMessage = str,
         chunk_max_tokens: int = _DEFAULT_CHUNK_MAX_TOKENS,
+        plan_runner: PlanRunner | None = None,
     ) -> None:
         self._dir = runs_dir
         self._runner = runner
+        self._plan_runner = plan_runner
         self._error_message = error_message
         self._chunk_max_tokens = chunk_max_tokens
         self._lock = threading.Lock()
@@ -141,7 +190,9 @@ class RunManager:
         self._stage_started: dict[str, float] = {}
         self._eta = EtaModel()
         self._cancel: set[str] = set()
-        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._plan_started: dict[str, float] = {}
+        # ("analyze" | "plan", run_id); None stops the worker.
+        self._queue: queue.Queue[tuple[str, str] | None] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._dir.mkdir(parents=True, exist_ok=True)
         self._load()
@@ -177,9 +228,43 @@ class RunManager:
             self._runs[run.id] = run
             snapshot = self._view(run)
         self._save(snapshot)
-        self._queue.put(run.id)
+        self._queue.put(("analyze", run.id))
         logger.info("run_queued id=%s chars=%d", run.id, run.transcript_chars)
         return snapshot
+
+    def regenerate_plan(self, run_id: str) -> Run:
+        """Queue a new plan for a finished run. It replaces the plan when done."""
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise RunNotFound(run_id)
+            if self._plan_runner is None:
+                raise RunNotReady("Plan regeneration is not available.")
+            if run.status != RunStatus.SUCCEEDED or run.analysis is None:
+                raise RunNotReady("The analysis has to finish before the plan can be regenerated.")
+            if run.plan_job is not None and run.plan_job.status != PlanJobStatus.FAILED:
+                raise RunNotReady("A new plan is already being written.")
+            run.plan_job = PlanJob(
+                status=PlanJobStatus.QUEUED, version=run.plan_version + 1, requested_at=_now()
+            )
+            self._save(run)
+            view = self._view(run)
+        self._queue.put(("plan", run_id))
+        logger.info("plan_queued id=%s version=%d", run_id, view.plan_job.version)
+        return view
+
+    def cancel_plan(self, run_id: str) -> Run:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise RunNotFound(run_id)
+            job = run.plan_job
+            if job is not None:
+                if job.status == PlanJobStatus.RUNNING:
+                    self._cancel.add(_plan_key(run_id))
+                run.plan_job = None
+                self._save(run)
+            return self._view(run)
 
     def get(self, run_id: str) -> Run:
         with self._lock:
@@ -222,6 +307,8 @@ class RunManager:
                 raise RunNotFound(run_id)
             if run.status not in _FINISHED:
                 self._cancel.add(run_id)
+            if run.plan_job is not None:
+                self._cancel.add(_plan_key(run_id))
             del self._runs[run_id]
         self._path(run_id).unlink(missing_ok=True)
 
@@ -239,9 +326,13 @@ class RunManager:
 
     def _work(self) -> None:
         while True:
-            run_id = self._queue.get()
-            if run_id is None:
+            item = self._queue.get()
+            if item is None:
                 return
+            kind, run_id = item
+            if kind == "plan":
+                self._execute_plan(run_id)
+                continue
             with self._lock:
                 run = self._runs.get(run_id)
                 if run is None or run.status != RunStatus.QUEUED:
@@ -268,6 +359,67 @@ class RunManager:
             return
         self._finish(snapshot.id, RunStatus.SUCCEEDED, error=None, analysis=analysis, plan=plan)
         logger.info("run_succeeded id=%s", snapshot.id)
+
+    def _execute_plan(self, run_id: str) -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            job = run.plan_job if run is not None else None
+            if run is None or job is None or job.status != PlanJobStatus.QUEUED:
+                return  # cancelled or deleted while queued
+            # Only now: a cancelled job before this one has finished by the time
+            # the single worker reaches this job, so its cancel flag is spent.
+            self._cancel.discard(_plan_key(run_id))
+            job.status = PlanJobStatus.RUNNING
+            job.started_at = _now()
+            self._plan_started[run_id] = time.monotonic()
+            snapshot = run.model_copy(deep=True)
+            version = job.version
+        logger.info("plan_started id=%s version=%d", run_id, version)
+        try:
+            plan = self._plan_runner(snapshot, PlanContext(self, run_id), version)
+        except RunCancelled:
+            logger.info("plan_cancelled id=%s", run_id)
+            with self._lock:
+                self._plan_started.pop(run_id, None)
+                self._cancel.discard(_plan_key(run_id))
+            return
+        except Exception as exc:  # noqa: BLE001 - every failure must end the job
+            logger.exception("plan_failed id=%s", run_id)
+            with self._lock:
+                self._plan_started.pop(run_id, None)
+                run = self._runs.get(run_id)
+                if run is not None and run.plan_job is not None:
+                    run.plan_job.status = PlanJobStatus.FAILED
+                    run.plan_job.error = self._error_message(exc)
+                    self._save(run)
+            return
+        with self._lock:
+            started = self._plan_started.pop(run_id, None)
+            run = self._runs.get(run_id)
+            if run is None or run.plan_job is None or run.plan_job.version != version:
+                return  # cancelled or deleted while writing
+            run.plan = plan
+            run.plan_version = version
+            run.plan_job = None
+            if started is not None:
+                run.stage_timings.append(
+                    StageTiming(
+                        stage=PLAN_STAGE,
+                        seconds=round(time.monotonic() - started, 1),
+                        kilotokens=round(
+                            kilotokens_per_chunk(run.transcript_chars, self._chunks_of(run)), 2
+                        ),
+                    )
+                )
+            self._save(run)
+            self._refresh_eta_model_locked()
+        logger.info("plan_succeeded id=%s version=%d steps=%d", run_id, version, len(plan.steps))
+
+    def _update_plan_tokens(self, run_id: str, count: int) -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None and run.plan_job is not None:
+                run.plan_job.tokens = count
 
     # ---------------------------------------------------------------- updates
 
@@ -302,9 +454,10 @@ class RunManager:
             if run is not None:
                 run.warnings.append(message)
 
-    def _is_cancel_requested(self, run_id: str) -> bool:
+    def _is_cancel_requested(self, key: str) -> bool:
+        run_id = key.removeprefix("plan:")
         with self._lock:
-            return run_id in self._cancel or run_id not in self._runs
+            return key in self._cancel or run_id not in self._runs
 
     def _finish(self, run_id: str, status: RunStatus, *, error: str | None, **result) -> None:
         with self._lock:
@@ -390,6 +543,14 @@ class RunManager:
             )
         else:
             view.progress.eta_seconds = None
+        if view.plan_job is not None and view.plan_job.status != PlanJobStatus.FAILED:
+            chunks = self._chunks_of(run)
+            expected = self._eta.expected(
+                PLAN_STAGE, kilotokens_per_chunk(run.transcript_chars, chunks)
+            ) * self._eta.speed_factor(run.stage_timings)
+            started = self._plan_started.get(run.id)
+            elapsed = time.monotonic() - started if started is not None else 0.0
+            view.plan_job.eta_seconds = round(max(expected - elapsed, 15.0))
         return view
 
     # ------------------------------------------------------------ persistence
@@ -416,7 +577,15 @@ class RunManager:
                 run.error = "The server stopped before this run finished. Start it again."
                 run.finished_at = run.finished_at or _now()
                 self._save(run)
+            if run.plan_job is not None and run.plan_job.status != PlanJobStatus.FAILED:
+                run.plan_job.status = PlanJobStatus.FAILED
+                run.plan_job.error = "The server stopped before the new plan finished. Try again."
+                self._save(run)
             self._runs[run.id] = run
+
+
+def _plan_key(run_id: str) -> str:
+    return f"plan:{run_id}"
 
 
 def _now() -> datetime:

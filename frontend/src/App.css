@@ -1188,6 +1188,41 @@
   font-weight: 650;
 }
 
+/* -------------------------------------------------------- plan regeneration */
+
+.plan-job {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+}
+
+.plan-job > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.plan-job.is-done > svg {
+  color: var(--ok);
+}
+
+.plan-job-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-job-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.plan-job-meta {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- plan map */
 
 .map-dot {

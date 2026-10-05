@@ -186,3 +186,29 @@ def test_steps_cite_decisions_and_misfiled_ids_are_sorted_by_prefix() -> None:
     # A decision-only step is kept, with the decision's transcript evidence.
     assert second.related_decision_ids == ["DEC-001"]
     assert second.evidence[0].line_start == 30
+
+
+def test_plan_criteria_come_from_tasks_not_the_model() -> None:
+    answer = dict(PLAN, acceptance_criteria=["Campaign generates at least 120 qualified leads"])
+    plan = ImplementationPlanner(ScriptedLLM({"plan": answer})).plan(_analysis())
+    # The model's invented target is ignored; the tasks' criteria are used.
+    assert plan.acceptance_criteria == ["Same key and body returns the original charge."]
+
+
+def test_blanket_citation_is_kept_only_where_the_step_relates() -> None:
+    steps = [
+        {"title": "Add idempotency middleware for charges", "description": "Idempotency-Key header on POST /v1/charges",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-001"]},
+        {"title": "Write decline code docs", "description": "Document capture decline codes",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-002"]},
+        {"title": "Announce to client teams", "description": "Share the release notes",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-002"]},
+        {"title": "Only cites the requirement", "description": "Nothing else",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": []},
+    ]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps)})).plan(_analysis())
+    cited = [s.related_requirement_ids for s in plan.steps]
+
+    assert cited[0] == ["REQ-001"]  # shares "idempotency", "charges", ...
+    assert cited[1] == [] and cited[2] == []  # unrelated: blanket link removed
+    assert cited[3] == ["REQ-001"]  # its only reference, so the step is kept

@@ -37,12 +37,24 @@ export interface StageTiming {
   kilotokens: number
 }
 
+export interface PlanJob {
+  status: 'queued' | 'running' | 'failed'
+  version: number
+  requested_at: string
+  started_at: string | null
+  tokens: number
+  eta_seconds: number | null
+  error: string | null
+}
+
 export interface Run extends RunSummary {
   transcript: string
   include_plan: boolean
   analysis: MeetingAnalysis | null
   plan: ImplementationPlan | null
   stage_timings?: StageTiming[]
+  plan_version?: number
+  plan_job?: PlanJob | null
 }
 
 export interface SampleSummary {

@@ -10,13 +10,13 @@ TASK: Turn the engineering record above into an implementation plan.
   "decision_ids" it applies (DEC-...), and the "requirement_ids" (REQ-...)
   and "task_ids" (TSK-...) it delivers. Put each ID in the matching list.
   Every step must cite at least one ID.
-- "acceptance_criteria": up to 6 measurable "done when" conditions for the
-  whole plan, based on the record.
 
 RULES
 - Decisions are constraints: honor them, never contradict them.
 - Only cite IDs that appear in the record.
-- Do not invent technologies, services, or requirements the record does not mention.
+- Do not invent technologies, services, requirements, targets or dates the
+  record does not mention.
+- Keep qualifiers as written: "approximately 50" stays "approximately 50".
 - Return compact JSON on a single line, with no indentation.
 """.strip()
 

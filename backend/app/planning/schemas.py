@@ -56,7 +56,6 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "required": ["title", "description", "decision_ids", "requirement_ids", "task_ids"],
             },
         },
-        "acceptance_criteria": {"type": "array", "items": _STRING, "maxItems": 6},
     },
-    "required": ["title", "summary", "steps", "acceptance_criteria"],
+    "required": ["title", "summary", "steps"],
 }

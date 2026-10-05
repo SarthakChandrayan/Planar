@@ -205,6 +205,37 @@ def shared_words(left: str, right: str) -> tuple[int, float]:
     return shared, shared / min(len(a), len(b))
 
 
+def coverage(part: str, whole: str) -> float:
+    """Share of ``part``'s distinctive words that also appear in ``whole``."""
+    a = _expand(_tokens(part))
+    if not a:
+        return 0.0
+    return len(a & _expand(_tokens(whole))) / len(a)
+
+
+# Words that mark a statement as an estimate, option or opinion, not a commitment.
+_HEDGES = frozenset(
+    """
+    estimate estimated estimates estimating approximately approx roughly around
+    could might may possibly potentially perhaps maybe likely unlikely suggest
+    suggested suggests proposed proposes propose considered consider wondered
+    guess hope hopefully ideally
+    """.split()
+)
+# Words that mark the statement as a real obligation even if it also hedges.
+_FIRM = frozenset("must required require requires mandatory need needs".split())
+_FIRM_PHRASES = ("has to", "have to", "will not", "won't", "cannot", "can't")
+
+
+def is_hedged(text: str) -> bool:
+    """True when a line states an estimate or option rather than an obligation."""
+    lowered = text.lower()
+    words = set(re.findall(r"[a-z']+", lowered))
+    if words & _FIRM or any(phrase in lowered for phrase in _FIRM_PHRASES):
+        return False
+    return bool(words & _HEDGES)
+
+
 def _tokens(text: str) -> set[str]:
     words = re.findall(r"[a-z0-9]+", text.lower())
     return {w for w in words if len(w) >= 2 and w not in _STOPWORDS}

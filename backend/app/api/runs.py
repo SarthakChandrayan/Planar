@@ -8,7 +8,15 @@ from app.api.schemas import CreateRunRequest
 from app.config import Settings
 from app.dependencies import get_run_manager, get_settings
 from app.report import render_markdown
-from app.runs import Estimate, Run, RunManager, RunNotFound, RunStatus, RunSummary
+from app.runs import (
+    Estimate,
+    Run,
+    RunManager,
+    RunNotFound,
+    RunNotReady,
+    RunStatus,
+    RunSummary,
+)
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -60,6 +68,25 @@ def get_run(run_id: str, manager: Manager) -> Run:
 def cancel_run(run_id: str, manager: Manager) -> Run:
     try:
         return manager.cancel(run_id)
+    except RunNotFound:
+        raise HTTPException(status_code=404, detail="Run not found.") from None
+
+
+@router.post("/{run_id}/plan", response_model=Run, status_code=status.HTTP_202_ACCEPTED)
+def regenerate_plan(run_id: str, manager: Manager) -> Run:
+    """Write a new implementation plan in the background; it replaces the saved one."""
+    try:
+        return manager.regenerate_plan(run_id)
+    except RunNotFound:
+        raise HTTPException(status_code=404, detail="Run not found.") from None
+    except RunNotReady as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@router.post("/{run_id}/plan/cancel", response_model=Run)
+def cancel_plan(run_id: str, manager: Manager) -> Run:
+    try:
+        return manager.cancel_plan(run_id)
     except RunNotFound:
         raise HTTPException(status_code=404, detail="Run not found.") from None
 

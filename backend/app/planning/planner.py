@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
+from app.analysis.grounding import shared_words, similarity
 from app.analysis.parsing import parse_json_object
 from app.domain import (
     DEC_PREFIX,
@@ -36,7 +37,13 @@ _EMPTY_SUMMARY = (
     "The meeting record has no requirements or tasks, so there is nothing to plan yet."
 )
 _MAX_EVIDENCE_PER_STEP = 3
-_MAX_CRITERIA = 8
+_MAX_CRITERIA = 20
+_DUPLICATE_CRITERION_SIMILARITY = 0.6
+# An ID cited on at least this many steps, and on more than this share of
+# them, is a blanket citation: kept only where the step shares its wording.
+_BLANKET_MIN_STEPS = 3
+_BLANKET_SHARE = 0.6
+_BLANKET_MIN_SHARED_WORDS = 2
 
 
 @dataclass
@@ -55,6 +62,10 @@ class ImplementationPlanner:
     step applies, the requirements and tasks it delivers). Evidence comes
     from the cited items, so a plan step is always traceable to transcript
     lines. Tasks the model leaves out are appended as their own steps.
+
+    The plan's "done when" list is not written by the model: it is the tasks'
+    own criteria, which come from the action items. Free-written plan targets
+    were the one unchecked output, and small models invented numbers there.
     """
 
     def __init__(self, llm: LLMProvider) -> None:
@@ -121,6 +132,7 @@ def _to_domain(
             continue
         drafts.append(draft)
         covered_tasks.update(draft.task_ids)
+    _trim_blanket_citations(drafts, decisions, requirements, tasks)
 
     for task in analysis.tasks:
         if task.id not in covered_tasks:
@@ -140,15 +152,78 @@ def _to_domain(
         for index, draft in enumerate(drafts, start=1)
     ]
 
-    criteria = [c.strip() for c in extracted.acceptance_criteria if c.strip()]
-    if not criteria:
-        criteria = [c for task in analysis.tasks for c in task.acceptance_criteria]
+    criteria = _criteria_from_tasks(drafts, tasks)
     summary = extracted.summary.strip() or (
         f"{len(steps)} implementation steps covering {len(requirements)} requirements "
         f"and {len(tasks)} tasks."
     )
     plan_title = (title or extracted.title or _DEFAULT_TITLE).strip() or _DEFAULT_TITLE
     return _plan(plan_title, summary, steps, criteria[:_MAX_CRITERIA], analysis)
+
+
+def _criteria_from_tasks(drafts: list[_StepDraft], tasks: dict[str, Task]) -> list[str]:
+    """The plan's checklist: each task's own criteria, in plan order, de-duplicated."""
+    ordered: list[str] = []
+    for draft in drafts:
+        for task_id in draft.task_ids:
+            if task_id not in ordered:
+                ordered.append(task_id)
+    for task_id in tasks:
+        if task_id not in ordered:
+            ordered.append(task_id)
+    criteria: list[str] = []
+    for task_id in ordered:
+        for criterion in tasks[task_id].acceptance_criteria:
+            text = criterion.strip()
+            if text and not any(
+                similarity(text, kept) >= _DUPLICATE_CRITERION_SIMILARITY for kept in criteria
+            ):
+                criteria.append(text)
+    return criteria
+
+
+def _trim_blanket_citations(
+    drafts: list[_StepDraft],
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+    tasks: dict[str, Task],
+) -> None:
+    """Drop an ID the model attached to most steps where the step has nothing to do with it.
+
+    With one requirement in the record, a small model cites it on every step.
+    """
+    if len(drafts) < _BLANKET_MIN_STEPS:
+        return
+    texts = {**{k: v.statement for k, v in decisions.items()},
+             **{k: v.statement for k, v in requirements.items()}}
+    counts: dict[str, int] = {}
+    for draft in drafts:
+        for item_id in draft.decision_ids + draft.requirement_ids:
+            counts[item_id] = counts.get(item_id, 0) + 1
+    blanket = {
+        item_id
+        for item_id, count in counts.items()
+        if count >= _BLANKET_MIN_STEPS and count / len(drafts) > _BLANKET_SHARE
+    }
+    for item_id in blanket:
+        for draft in drafts:
+            ids = draft.decision_ids if item_id in draft.decision_ids else draft.requirement_ids
+            if item_id not in ids:
+                continue
+            step_text = " ".join(
+                [draft.title, draft.description]
+                + [f"{tasks[t].title} {tasks[t].description}" for t in draft.task_ids]
+            )
+            shared, _ = shared_words(step_text, texts[item_id])
+            if shared >= _BLANKET_MIN_SHARED_WORDS:
+                continue
+            remaining = len(draft.decision_ids) + len(draft.requirement_ids) + len(draft.task_ids)
+            if remaining <= 1:
+                continue  # its only reference: keep rather than lose the step
+            ids.remove(item_id)
+            logger.info(
+                "implementation_plan_dropped_blanket_citation id=%s step=%s", item_id, draft.title
+            )
 
 
 def _plan(

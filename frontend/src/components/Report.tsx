@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
-import { createImplementationPlan } from '../api/meetings'
-import { getReportMarkdown, reportUrl } from '../api/runs'
-import { formatElapsed } from '../formatElapsed'
+import { cancelPlan, getReportMarkdown, getRun, regeneratePlan, reportUrl } from '../api/runs'
+import { formatApprox, formatClock, formatElapsed } from '../formatElapsed'
 import { buildTraceIndex } from '../trace'
-import type { ImplementationPlan } from '../types/plan'
 import type { Run } from '../types/run'
 import {
   AlertIcon,
@@ -24,6 +22,8 @@ import {
   TaskSection,
 } from './sections'
 import { TraceIndexContext, TraceNavContext } from './TraceContext'
+
+const PLAN_POLL_MS = 2000
 
 type Tab = 'overview' | 'map' | 'decisions' | 'requirements' | 'tasks' | 'risks' | 'questions' | 'plan'
 
@@ -50,12 +50,17 @@ function formatDate(iso: string): string {
     : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export function Report({ run, onBack }: { run: Run; onBack: () => void }) {
+export function Report({ run: initialRun, onBack }: { run: Run; onBack: () => void }) {
+  // The run is re-fetched while a new plan is being written.
+  const [run, setRun] = useState<Run>(initialRun)
   const analysis = run.analysis!
+  const plan = run.plan
+  const job = run.plan_job ?? null
+  const planActive = job != null && job.status !== 'failed'
   const [tab, setTab] = useState<Tab>('overview')
-  const [plan, setPlan] = useState<ImplementationPlan | null>(run.plan)
-  const [planning, setPlanning] = useState(false)
   const [planError, setPlanError] = useState<string | null>(null)
+  const [newPlanVersion, setNewPlanVersion] = useState<number | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
   const [traceNonce, setTraceNonce] = useState(0)
   const pendingTraceIdRef = useRef<string | null>(null)
@@ -107,16 +112,66 @@ export function Report({ run, onBack }: { run: Run; onBack: () => void }) {
     [],
   )
 
-  async function regeneratePlan() {
+  // While a new plan is being written, poll until it lands (or fails).
+  const runId = run.id
+  const versionBefore = run.plan_version ?? 1
+  useEffect(() => {
+    if (!planActive) {
+      return
+    }
+    let timer: number | undefined
+    let stopped = false
+    const poll = async () => {
+      try {
+        const next = await getRun(runId)
+        if (stopped) {
+          return
+        }
+        setRun(next)
+        const stillActive = next.plan_job != null && next.plan_job.status !== 'failed'
+        if (!stillActive) {
+          if ((next.plan_version ?? 1) > versionBefore) {
+            setNewPlanVersion(next.plan_version ?? null)
+            setTab('plan')
+          }
+          return
+        }
+      } catch {
+        // Backend restarting: keep polling.
+      }
+      timer = window.setTimeout(poll, PLAN_POLL_MS)
+    }
+    timer = window.setTimeout(poll, PLAN_POLL_MS)
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+    }
+  }, [planActive, runId, versionBefore])
+
+  // Tick the elapsed clock on the progress panel.
+  useEffect(() => {
+    if (!planActive) {
+      return
+    }
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [planActive])
+
+  async function startRegenerate() {
     setPlanError(null)
-    setPlanning(true)
+    setNewPlanVersion(null)
     try {
-      setPlan(await createImplementationPlan(analysis, run.title))
-      setTab('plan')
+      setRun(await regeneratePlan(run.id))
     } catch (caught) {
-      setPlanError(caught instanceof ApiError ? caught.message : 'Could not regenerate the plan.')
-    } finally {
-      setPlanning(false)
+      setPlanError(caught instanceof ApiError ? caught.message : 'Could not start a new plan.')
+    }
+  }
+
+  async function stopRegenerate() {
+    try {
+      setRun(await cancelPlan(run.id))
+    } catch (caught) {
+      setPlanError(caught instanceof ApiError ? caught.message : 'Could not cancel.')
     }
   }
 
@@ -165,12 +220,12 @@ export function Report({ run, onBack }: { run: Run; onBack: () => void }) {
               <button
                 type="button"
                 className="button button-ghost"
-                onClick={() => void regeneratePlan()}
-                disabled={planning}
-                title="Ask the model for a new implementation plan"
+                onClick={() => void startRegenerate()}
+                disabled={planActive}
+                title="Write a different implementation plan; it replaces the saved one"
               >
-                <RefreshIcon size={16} className={planning ? 'spin' : undefined} />
-                {planning ? 'Regenerating plan…' : 'Regenerate plan'}
+                <RefreshIcon size={16} className={planActive ? 'spin' : undefined} />
+                {planActive ? 'Writing new plan…' : 'Regenerate plan'}
               </button>
             </div>
           </div>
@@ -184,6 +239,55 @@ export function Report({ run, onBack }: { run: Run; onBack: () => void }) {
               {owners > 0 ? ` · ${owners} ${owners === 1 ? 'owner' : 'owners'}` : null}
             </p>
           </header>
+
+          {planActive && job ? (
+            <div className="plan-job card" role="status" aria-live="polite">
+              <RefreshIcon size={18} className="spin" />
+              <div className="plan-job-text">
+                <p className="plan-job-title">
+                  {job.status === 'queued' ? 'Waiting for the model…' : 'Writing a new plan…'}
+                </p>
+                <p className="plan-job-meta">
+                  {job.eta_seconds != null ? `${formatApprox(job.eta_seconds)} left` : 'Estimating…'}
+                  {job.started_at
+                    ? ` · ${formatClock(nowMs - new Date(job.started_at).getTime())} elapsed`
+                    : null}
+                  {job.tokens > 0 ? ` · ${job.tokens} tokens written` : null}
+                  {' · the current plan stays until the new one is ready'}
+                </p>
+              </div>
+              <button type="button" className="button button-ghost" onClick={() => void stopRegenerate()}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+
+          {newPlanVersion != null ? (
+            <div className="plan-job card is-done" role="status">
+              <CheckIcon size={18} />
+              <p className="plan-job-title">
+                New plan ready (version {newPlanVersion}). It replaced the previous plan and is saved.
+              </p>
+              <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setNewPlanVersion(null)}>
+                ×
+              </button>
+            </div>
+          ) : null}
+
+          {job?.status === 'failed' && !planError ? (
+            <div className="callout callout-danger" role="alert">
+              <AlertIcon size={18} />
+              <div>
+                <p>
+                  <strong>The new plan couldn’t be written.</strong> {job.error} The previous plan is
+                  unchanged.
+                </p>
+                <button type="button" className="link-button" onClick={() => void startRegenerate()}>
+                  Try again
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {run.warnings.length > 0 || planError ? (
             <div className="callout" role="note">

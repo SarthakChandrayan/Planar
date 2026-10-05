@@ -14,6 +14,7 @@ asked of the model: shown a list of earlier items, a small model copies it.
 """
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,6 +30,8 @@ from app.analysis.errors import (
 from app.analysis.grounding import (
     Grounder,
     Grounding,
+    coverage,
+    is_hedged,
     shared_words,
     similarity,
     text_mentioned,
@@ -76,6 +79,9 @@ _DUPLICATE_SIMILARITY = 0.6
 _DUPLICATE_SIMILARITY_SAME_LINES = 0.35
 # A requirement this close to a decision is the decision restated.
 _RESTATED_DECISION_SIMILARITY = 0.75
+# A requirement whose evidence is only decision lines, and whose wording is
+# mostly those decisions' wording, restates them and adds nothing.
+_RESTATED_DECISIONS_COVERAGE = 0.5
 # Inferred links: wording overlap needed, lower when evidence lines are shared.
 _LINK_SIMILARITY = 0.3
 _LINK_SIMILARITY_SAME_LINES = 0.12
@@ -86,7 +92,8 @@ _MAX_LINKS = 2
 _MAX_ACCEPTANCE_CRITERIA = 4
 _GENERIC_OWNERS = frozenset(
     {"", "none", "n/a", "na", "tbd", "unknown", "unassigned", "team", "the team",
-     "everyone", "all", "we", "us", "someone", "nobody", "anyone"}
+     "everyone", "all", "we", "us", "someone", "nobody", "anyone", "group",
+     "the group"}
 )
 _GENERIC_DUE = frozenset(
     {"", "none", "n/a", "na", "tbd", "unknown", "not specified", "unspecified",
@@ -315,11 +322,24 @@ class _RecordBuilder:
         }
         handlers[key](result)
 
-    def _accept(self, kind: str, claim: str, lines: list[int]) -> Grounding | None:
+    def _accept(
+        self,
+        kind: str,
+        claim: str,
+        lines: list[int],
+        reject: Callable[[Grounding], bool] | None = None,
+    ) -> Grounding | None:
+        """Ground a claim, apply ``reject``, then de-duplicate.
+
+        Rejection runs before the item is remembered, so a rejected item can
+        never block a later, valid version of the same claim.
+        """
         grounding = self._grounder.ground(claim, lines)
         if grounding is None:
             self.dropped_ungrounded += 1
             logger.info("analysis_dropped_ungrounded kind=%s claim=%s", kind, _preview(claim, 120))
+            return None
+        if reject is not None and reject(grounding):
             return None
         if self._is_duplicate(claim, grounding, self._seen[kind]):
             self.dropped_duplicates += 1
@@ -362,7 +382,12 @@ class _RecordBuilder:
         ):
             self.dropped_duplicates += 1
             return
-        grounding = self._accept("requirement", item.statement, item.lines)
+        grounding = self._accept(
+            "requirement",
+            item.statement,
+            item.lines,
+            reject=lambda g: self._reject_requirement(item.statement, g),
+        )
         if grounding is None:
             return
         self.requirements.append(
@@ -373,6 +398,29 @@ class _RecordBuilder:
                 source_reference=self._source(grounding, item.statement),
             )
         )
+
+    def _reject_requirement(self, statement: str, grounding: Grounding) -> bool:
+        if self._restates_decisions(statement, grounding):
+            self.dropped_duplicates += 1
+            logger.info("analysis_dropped_restated_decisions claim=%s", _preview(statement, 120))
+            return True
+        if _upgrades_hedge(statement, grounding):
+            self.dropped_ungrounded += 1
+            logger.info("analysis_dropped_hedged_requirement claim=%s", _preview(statement, 120))
+            return True
+        return False
+
+    def _restates_decisions(self, statement: str, grounding: Grounding) -> bool:
+        lines = {line.source_line for line in grounding.lines}
+        on_lines = [
+            d.statement for d in self.decisions if _ref_lines([d.source_reference]) & lines
+        ]
+        decision_lines: set[int] = set()
+        for d in self.decisions:
+            decision_lines |= _ref_lines([d.source_reference])
+        if not on_lines or not lines <= decision_lines:
+            return False
+        return coverage(statement, " ".join(on_lines)) >= _RESTATED_DECISIONS_COVERAGE
 
     def _add_task(self, item: ExtractedTask) -> None:
         owner = self._owner(item.owner)
@@ -495,13 +543,24 @@ def _source(grounding: Grounding, grounder: Grounder, claim: str) -> SourceRefer
         if speaker is None and line.speaker:
             text = f"{line.speaker}: {text}"
         parts.append(text)
-    excerpt = " … ".join(parts)
+    # Trimmed lines carry their own "…", so joining can double them up.
+    excerpt = re.sub(r"…(?:\s*…)+", "…", " … ".join(parts))
     return SourceReference(
         excerpt=excerpt,
         line_start=lines[0].source_line,
         line_end=lines[-1].source_line,
         speaker=speaker,
     )
+
+
+def _upgrades_hedge(claim: str, grounding: Grounding) -> bool:
+    """The evidence is an estimate or option, but the claim states an obligation.
+
+    "Karan estimated the team could support approximately 50" must not become
+    "the team must handle 50".
+    """
+    evidence = " ".join(line.content for line in grounding.lines)
+    return is_hedged(evidence) and not is_hedged(claim)
 
 
 _Target = tuple[str, str, set[int]]

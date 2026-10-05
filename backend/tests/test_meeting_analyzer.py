@@ -6,7 +6,7 @@ from app.analysis import (
     MeetingAnalyzer,
     TranscriptTooLongError,
 )
-from app.domain import Priority, Severity
+from app.domain import MeetingAnalysis, Priority, Severity
 from app.llm import LLMOutputTruncatedError, LLMUnavailableError
 from tests.fakes import FailingLLM, ScriptedLLM
 from tests.fixtures.payment_meeting import PAYMENT_MEETING_TRANSCRIPT
@@ -357,3 +357,56 @@ def test_short_decision_links_to_longer_requirement_that_extends_it() -> None:
     )
     analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
     assert analysis.requirements[0].related_decision_ids == ["DEC-001"]
+
+
+LAUNCH = """Meeting: Launch planning
+Karan: I estimated the team could comfortably support approximately 50 new premium accounts.
+Dee: The sync API must accept per-field timestamps and return the merged record.
+Decisions:
+1. The November 4 launch date remains the target.
+2. October 28 will be the internal readiness checkpoint.
+3. If the critical feature is not stable by October 28, the launch will move to November 11."""
+
+
+def _launch_analysis(requirements: list[dict]) -> "MeetingAnalysis":
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {"statement": "The November 4 launch date remains the target.", "lines": [5]},
+                    {"statement": "October 28 is the internal readiness checkpoint.", "lines": [6]},
+                    {"statement": "If the critical feature is not stable by October 28, the launch moves to November 11.", "lines": [7]},
+                ]
+            },
+            "requirements": {"requirements": requirements},
+        }
+    )
+    return MeetingAnalysis.model_validate(MeetingAnalyzer(llm).analyze(LAUNCH).model_dump())
+
+
+def test_requirement_combining_decisions_is_dropped() -> None:
+    analysis = _launch_analysis(
+        [
+            {
+                "statement": "The launch must remain scheduled for November 4 unless the critical feature fails the October 28 readiness review.",
+                "lines": [5, 7],
+            }
+        ]
+    )
+    assert analysis.requirements == []
+
+
+def test_estimate_does_not_become_an_obligation() -> None:
+    analysis = _launch_analysis(
+        [
+            {"statement": "The customer-success team must handle up to 50 new premium accounts.", "lines": [2]},
+            {"statement": "The customer-success team could support approximately 50 new premium accounts.", "lines": [2]},
+            {"statement": "The sync API must accept per-field timestamps.", "lines": [3]},
+        ]
+    )
+    statements = [r.statement for r in analysis.requirements]
+    # The "must" version of an estimate is dropped; a faithful hedged one stays.
+    assert statements == [
+        "The customer-success team could support approximately 50 new premium accounts.",
+        "The sync API must accept per-field timestamps.",
+    ]

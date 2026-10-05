@@ -22,6 +22,9 @@ RULES
   component directly ("The webhook handler must ..."), not "The system must ...".
 - Options the meeting rejected appear only as "do not ..." decisions. Never
   mention them in requirements, tasks, or risks.
+- Keep qualifiers exactly as said: "approximately 50" stays "approximately
+  50", "could" stays "could". Never turn an estimate, suggestion, option or
+  concern into a "must".
 - If there are none, return an empty list.
 - Output compact JSON on ONE line, exactly like the example. No line breaks,
   no indentation.
@@ -40,11 +43,17 @@ EXAMPLE: {"decisions":[{"statement":"Use SQLite for local drafts.","lines":[12]}
 
 REQUIREMENTS_TASK = """
 TASK: List the REQUIREMENTS stated in this meeting.
-A requirement is something the built system MUST do or satisfy: required
-behaviour, data handling, error handling, performance, security, compliance,
-monitoring, or compatibility.
-NOT requirements: choices of technology, vendor, architecture or scope (those
-are decisions), and work assignments (those are tasks).
+A requirement is a condition the result MUST satisfy.
+- Software: required behaviour, data handling, error handling, performance,
+  security, compliance, monitoring, compatibility.
+- Product, launch or business: rules, limits, eligibility, approvals, targets
+  and things that must be in place ("the discount is only for existing
+  customers", "targets must be set before launch").
+Capture the detail a decision leaves out: who it applies to, limits, conditions.
+State what must be true AFTER the work. Problems, current behaviour and
+proposals that were not agreed are not requirements.
+NOT requirements: a decision restated (choosing an option, price, vendor, date
+or scope is a decision) and work assignments (those are tasks).
 EXAMPLE: {"requirements":[{"statement":"The sync API must accept per-field timestamps.","lines":[30]}]}
 """.strip()
 
@@ -54,18 +63,26 @@ A task is concrete work someone was asked to do or volunteered for
 ("Arjun will...", "can you...", "action item:", "I'll take that").
 - "owner": the person's name exactly as written in the transcript, or "" if
   nobody was named.
-- "due": the deadline as said ("Friday", "end of sprint"), or "".
-- "priority": low, medium, high or critical, from the urgency in the meeting.
-- "description": one short sentence, or "" if the title says it all.
-- "acceptance_criteria": up to 2 short, checkable "done when" conditions,
-  based on what was said.
-EXAMPLE: {"tasks":[{"title":"Prototype the draft store","description":"","owner":"Ben","due":"Friday","priority":"high","acceptance_criteria":["Drafts survive an app crash"],"lines":[41]}]}
+- "title": the action, in a few words.
+- "description": the FULL action as assigned. If it has several parts
+  ("finalize X and coordinate Y"), keep every part. Never drop part of a task.
+- "due": the deadline as said ("Friday", "end of sprint"), or the date the
+  work is tied to ("for the October 28 review"), or "".
+- "priority": "high" only if the meeting tied the task to an urgent deadline
+  or a launch gate, or called it critical; "low" if optional; else "medium".
+- "acceptance_criteria": up to 2 specific, checkable results of the work, using
+  names, numbers and dates from the meeting. Do not restate the title.
+EXAMPLE: {"tasks":[{"title":"Prototype the draft store","description":"Prototype the SQLite draft store with crash-safe writes and share the results with Chen","owner":"Ben","due":"Friday","priority":"high","acceptance_criteria":["Drafts survive the app being killed mid-save"],"lines":[41]}]}
 """.strip()
 
 RISKS_QUESTIONS_TASK = """
 TASK: List the RISKS and OPEN QUESTIONS from this meeting.
-A risk is something participants said could go wrong: failure modes,
-deadline or dependency risks, security or compliance exposure.
+A risk is something participants said could go wrong: failure modes, missed
+deadlines, dependencies, capacity limits, customer or market reactions, cost,
+security or compliance exposure. Look for warnings and concerns: "could",
+"might", "risk", "concern", "warned", "problematic", "not enough capacity",
+"hard to reverse", "if ... then ...". Include risks the meeting decided to
+accept or mitigate, and say what could happen.
 "severity": low, medium, high or critical, from how seriously it was treated.
 An open question is something explicitly left unresolved: to be decided later,
 or to be answered by someone not present. Questions answered during the

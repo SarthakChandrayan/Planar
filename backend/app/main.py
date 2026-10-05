@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.api import meetings_router, runs_router, samples_router
 from app.config import Settings
 from app.dependencies import (
+    build_plan_runner,
     build_runner,
     get_llm_provider,
     get_settings,
@@ -75,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             build_runner(settings),
             error_message=error_message,
             chunk_max_tokens=settings.chunk_max_tokens,
+            plan_runner=build_plan_runner(settings),
         )
         manager.start()
         app.state.run_manager = manager
