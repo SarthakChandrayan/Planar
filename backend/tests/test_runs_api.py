@@ -74,7 +74,7 @@ def test_run_completes_and_is_retrievable(make_client) -> None:
     body = client.get(f"/api/runs/{run_id}").json()
 
     assert body["status"] == "succeeded"
-    assert body["title"] == "Untitled meeting"
+    assert body["title"] == "Payments platform weekly — 2026-09-04"
     assert body["analysis"]["tasks"][0]["owner"] == "Priya"
     assert body["plan"]["steps"][0]["related_task_ids"] == ["TSK-001"]
     assert body["progress"]["stage"] == "Done"
@@ -178,3 +178,27 @@ def test_cancel_running_run_stops_at_next_token(tmp_path: Path) -> None:
     release.set()
     assert manager.wait(run_id, timeout=5).status == "cancelled"
     manager.stop()
+
+
+def test_estimate_endpoint(make_client) -> None:
+    client, _ = make_client(ScriptedLLM())
+    small = client.get("/api/runs/estimate", params={"chars": 3000}).json()
+    large = client.get("/api/runs/estimate", params={"chars": 60000}).json()
+
+    assert small["chunks"] == 1 and small["basis"] == "default"
+    assert large["chunks"] > 1
+    assert large["seconds"] > small["seconds"] > 0
+    assert client.get("/api/runs/estimate", params={"chars": -1}).status_code == 422
+
+
+def test_title_comes_from_header_or_short_first_line(tmp_path: Path) -> None:
+    from app.runs import _title_from
+
+    assert _title_from("Meeting: Payments sync\nLin: hi") == "Payments sync"
+    assert (
+        _title_from("Technical Architecture Review\nMeeting Type: Review\nMaya: hi")
+        == "Technical Architecture Review"
+    )
+    assert _title_from("# Weekly sync\nLin: hi") == "Weekly sync"
+    assert _title_from("Lin: We will ship it.\nSam: Agreed.") == "Untitled meeting"
+    assert _title_from("x" * 300) == "Untitled meeting"

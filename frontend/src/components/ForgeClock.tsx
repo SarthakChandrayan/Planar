@@ -1,10 +1,11 @@
-import { formatClock } from '../formatElapsed'
+import { formatApprox, formatClock } from '../formatElapsed'
 
 export interface ForgeStage {
   label: string
   step: number
   total: number
   tokens: number
+  etaSeconds: number | null
 }
 
 export function ForgeClock({
@@ -41,6 +42,9 @@ export function ForgeClock({
               <span className="forge-tokens"> · {stage.tokens} tokens written</span>
             ) : null}
           </p>
+          {stage.etaSeconds != null ? (
+            <p className="forge-eta">{formatApprox(stage.etaSeconds)} left</p>
+          ) : null}
           <span
             className="stage-bar"
             role="progressbar"
@@ -52,9 +56,14 @@ export function ForgeClock({
           </span>
         </div>
       ) : (
-        <p role="status" aria-live="polite">
-          {stage?.label ?? message}
-        </p>
+        <>
+          <p role="status" aria-live="polite">
+            {stage?.label ?? message}
+          </p>
+          {stage?.etaSeconds != null ? (
+            <p className="forge-eta">Expected to take {formatApprox(stage.etaSeconds)}</p>
+          ) : null}
+        </>
       )}
       <span className="scan" aria-hidden="true">
         <span />

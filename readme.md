@@ -43,6 +43,13 @@ plan, and a **Download .md** button.
 The header shows a warning if Ollama is not running or the configured model
 is not installed, with the command that fixes it.
 
+**Time estimates.** As you paste, Planar shows roughly how long the run will
+take; during a run it shows the time left. Estimates start from timings
+measured on a CPU-only laptop and then learn from your own finished runs
+(per stage, scaled by transcript length), so they adapt to your hardware
+and Ollama settings. A run going faster or slower than usual corrects its
+own estimate after the first stage.
+
 ### From the terminal
 
 ```powershell
@@ -125,7 +132,8 @@ Other levers, in `.env`:
 |---|---|---|
 | `POST` | `/api/runs` | Start a run `{transcript, title?, include_plan?}` → 202 |
 | `GET` | `/api/runs` | Recent runs (summaries) |
-| `GET` | `/api/runs/{id}` | Status, progress, and result when done |
+| `GET` | `/api/runs/estimate?chars=N` | Expected duration for a transcript of N characters |
+| `GET` | `/api/runs/{id}` | Status, progress (incl. `eta_seconds`), and result when done |
 | `POST` | `/api/runs/{id}/cancel` | Cancel (stops at the next token) |
 | `DELETE` | `/api/runs/{id}` | Delete a run |
 | `GET` | `/api/runs/{id}/report.md` | Markdown report |

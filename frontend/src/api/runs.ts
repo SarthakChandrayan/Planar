@@ -1,4 +1,4 @@
-import type { Readiness, Run, RunSummary } from '../types/run'
+import type { Estimate, Readiness, Run, RunSummary } from '../types/run'
 import { apiUrl, request } from './client'
 
 export function startRun(transcript: string, title?: string | null): Promise<Run> {
@@ -10,6 +10,10 @@ export function startRun(transcript: string, title?: string | null): Promise<Run
 
 export function getRun(id: string, signal?: AbortSignal): Promise<Run> {
   return request<Run>(`/api/runs/${encodeURIComponent(id)}`, { signal })
+}
+
+export function getEstimate(chars: number, signal?: AbortSignal): Promise<Estimate> {
+  return request<Estimate>(`/api/runs/estimate?chars=${chars}`, { signal })
 }
 
 export function listRuns(): Promise<RunSummary[]> {

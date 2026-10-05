@@ -20,10 +20,20 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from app.domain import ImplementationPlan, MeetingAnalysis
+from app.eta import (
+    HISTORY_RUNS,
+    EtaModel,
+    StageTiming,
+    chunk_count,
+    kilotokens_per_chunk,
+    stage_key,
+    stage_sequence,
+)
 
 logger = logging.getLogger(__name__)
 
 _RUN_ID_CHARS = 12
+_DEFAULT_CHUNK_MAX_TOKENS = 8000
 
 
 class RunStatus(str, Enum):
@@ -43,6 +53,8 @@ class RunProgress(BaseModel):
     total_steps: int = 0
     stage_tokens: int = 0
     total_tokens: int = 0
+    # Estimated seconds until the run finishes; None once it has finished.
+    eta_seconds: int | None = None
 
 
 class RunSummary(BaseModel):
@@ -63,6 +75,8 @@ class Run(RunSummary):
     include_plan: bool = True
     analysis: MeetingAnalysis | None = None
     plan: ImplementationPlan | None = None
+    # How long each stage took; feeds future time estimates.
+    stage_timings: list[StageTiming] = Field(default_factory=list)
 
     def summary(self) -> RunSummary:
         return RunSummary.model_validate(self.model_dump(include=set(RunSummary.model_fields)))
@@ -74,6 +88,12 @@ class RunCancelled(Exception):
 
 class RunNotFound(Exception):
     pass
+
+
+class Estimate(BaseModel):
+    seconds: int
+    chunks: int
+    basis: str
 
 
 class RunContext:
@@ -110,17 +130,22 @@ class RunManager:
         runs_dir: Path,
         runner: Runner,
         error_message: ErrorMessage = str,
+        chunk_max_tokens: int = _DEFAULT_CHUNK_MAX_TOKENS,
     ) -> None:
         self._dir = runs_dir
         self._runner = runner
         self._error_message = error_message
+        self._chunk_max_tokens = chunk_max_tokens
         self._lock = threading.Lock()
         self._runs: dict[str, Run] = {}
+        self._stage_started: dict[str, float] = {}
+        self._eta = EtaModel()
         self._cancel: set[str] = set()
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._dir.mkdir(parents=True, exist_ok=True)
         self._load()
+        self._refresh_eta_model()
 
     # ------------------------------------------------------------------ public
 
@@ -148,9 +173,9 @@ class RunManager:
             transcript=transcript,
             include_plan=include_plan,
         )
-        snapshot = run.model_copy(deep=True)
         with self._lock:
             self._runs[run.id] = run
+            snapshot = self._view(run)
         self._save(snapshot)
         self._queue.put(run.id)
         logger.info("run_queued id=%s chars=%d", run.id, run.transcript_chars)
@@ -161,12 +186,22 @@ class RunManager:
             run = self._runs.get(run_id)
             if run is None:
                 raise RunNotFound(run_id)
-            return run.model_copy(deep=True)
+            return self._view(run)
 
     def list(self, limit: int = 50) -> list[RunSummary]:
         with self._lock:
             runs = sorted(self._runs.values(), key=lambda r: r.created_at, reverse=True)
-            return [run.summary() for run in runs[:limit]]
+            return [self._view(run).summary() for run in runs[:limit]]
+
+    def estimate(self, transcript_chars: int, include_plan: bool = True) -> Estimate:
+        """How long a transcript of this size should take on this machine."""
+        with self._lock:
+            seconds = self._eta.total(transcript_chars, self._chunk_max_tokens, include_plan)
+            return Estimate(
+                seconds=round(seconds),
+                chunks=chunk_count(transcript_chars, self._chunk_max_tokens),
+                basis=self._eta.basis,
+            )
 
     def cancel(self, run_id: str) -> Run:
         with self._lock:
@@ -178,7 +213,7 @@ class RunManager:
             self._cancel.add(run_id)
             if run.status == RunStatus.QUEUED:
                 self._finish_locked(run, RunStatus.CANCELLED, error=None)
-            return run.model_copy(deep=True)
+            return self._view(run)
 
     def delete(self, run_id: str) -> None:
         with self._lock:
@@ -251,6 +286,8 @@ class RunManager:
                 return
             progress = run.progress
             if stage is not None:
+                self._close_stage_locked(run)
+                self._stage_started[run_id] = time.monotonic()
                 progress.stage = stage
                 progress.step = step or progress.step
                 progress.total_steps = total or progress.total_steps
@@ -276,9 +313,15 @@ class RunManager:
                 return
             for key, value in result.items():
                 setattr(run, key, value)
+            if status == RunStatus.SUCCEEDED:
+                self._close_stage_locked(run)
             self._finish_locked(run, status, error=error)
+            if status == RunStatus.SUCCEEDED:
+                self._refresh_eta_model_locked()
 
     def _finish_locked(self, run: Run, status: RunStatus, *, error: str | None) -> None:
+        self._stage_started.pop(run.id, None)
+        run.progress.eta_seconds = None
         run.status = status
         run.error = error
         run.finished_at = _now()
@@ -289,6 +332,65 @@ class RunManager:
         }[status]
         self._cancel.discard(run.id)
         self._save(run)
+
+    # ----------------------------------------------------------------- timing
+
+    def _chunks_of(self, run: Run) -> int:
+        plan_steps = 1 if run.include_plan else 0
+        if run.progress.total_steps > plan_steps:
+            return max(1, (run.progress.total_steps - plan_steps) // 4)
+        return chunk_count(run.transcript_chars, self._chunk_max_tokens)
+
+    def _close_stage_locked(self, run: Run) -> None:
+        """Record how long the stage that is ending took."""
+        started = self._stage_started.get(run.id)
+        if started is None or run.progress.step <= 0:
+            return
+        run.stage_timings.append(
+            StageTiming(
+                stage=stage_key(run.progress.stage),
+                seconds=round(time.monotonic() - started, 1),
+                kilotokens=round(
+                    kilotokens_per_chunk(run.transcript_chars, self._chunks_of(run)), 2
+                ),
+            )
+        )
+
+    def _refresh_eta_model(self) -> None:
+        with self._lock:
+            self._refresh_eta_model_locked()
+
+    def _refresh_eta_model_locked(self) -> None:
+        finished = sorted(
+            (r for r in self._runs.values() if r.status == RunStatus.SUCCEEDED and r.stage_timings),
+            key=lambda r: r.created_at,
+            reverse=True,
+        )
+        self._eta = EtaModel(run.stage_timings for run in finished[:HISTORY_RUNS])
+
+    def _view(self, run: Run) -> Run:
+        """A copy of the run with a fresh time estimate."""
+        view = run.model_copy(deep=True)
+        if run.status == RunStatus.QUEUED:
+            view.progress.eta_seconds = round(
+                self._eta.total(run.transcript_chars, self._chunk_max_tokens, run.include_plan)
+            )
+        elif run.status == RunStatus.RUNNING:
+            chunks = self._chunks_of(run)
+            started = self._stage_started.get(run.id)
+            elapsed = time.monotonic() - started if started is not None else 0.0
+            view.progress.eta_seconds = round(
+                self._eta.remaining(
+                    stage_sequence(chunks, run.include_plan),
+                    run.progress.step - 1,
+                    elapsed,
+                    kilotokens_per_chunk(run.transcript_chars, chunks),
+                    run.stage_timings,
+                )
+            )
+        else:
+            view.progress.eta_seconds = None
+        return view
 
     # ------------------------------------------------------------ persistence
 
@@ -321,11 +423,20 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+_MAX_TITLE_LINE_CHARS = 100
+
+
 def _title_from(transcript: str) -> str:
-    for line in transcript.splitlines():
-        stripped = line.strip()
-        if stripped.lower().startswith(("meeting:", "title:", "subject:")):
-            title = stripped.split(":", 1)[1].strip()
+    lines = [line.strip() for line in transcript.splitlines() if line.strip()]
+    for line in lines:
+        if line.lower().startswith(("meeting:", "title:", "subject:")):
+            title = line.split(":", 1)[1].strip()
             if title:
                 return title[:120]
+    # Otherwise a short first line that isn't someone speaking ("Maya: ...").
+    if lines:
+        first = lines[0].lstrip("#").strip()
+        speaking = ":" in first and not first.endswith(":")
+        if first and len(first) <= _MAX_TITLE_LINE_CHARS and not speaking:
+            return first
     return "Untitled meeting"

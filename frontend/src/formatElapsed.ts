@@ -13,6 +13,20 @@ export function formatElapsed(ms: number): string {
   return `${seconds}s`
 }
 
+/** Rough remaining-time phrase: "under a minute", "about 4 min", "about 1 h 10 min". */
+export function formatApprox(seconds: number): string {
+  if (seconds < 60) {
+    return 'under a minute'
+  }
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) {
+    return `about ${minutes} min`
+  }
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest > 0 ? `about ${hours} h ${rest} min` : `about ${hours} h`
+}
+
 export function formatClock(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const hours = Math.floor(totalSeconds / 3600)

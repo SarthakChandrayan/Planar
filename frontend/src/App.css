@@ -685,6 +685,17 @@ button:disabled {
   transition: width 0.4s ease;
 }
 
+.forge-eta {
+  margin: 8px 0 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.estimate {
+  color: var(--muted);
+}
+
 .forge-cancel {
   margin-top: 16px;
 }

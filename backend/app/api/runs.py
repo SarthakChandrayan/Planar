@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import PlainTextResponse
 
 from app.analysis import TranscriptTooLongError
@@ -8,7 +8,7 @@ from app.api.schemas import CreateRunRequest
 from app.config import Settings
 from app.dependencies import get_run_manager, get_settings
 from app.report import render_markdown
-from app.runs import Run, RunManager, RunNotFound, RunStatus, RunSummary
+from app.runs import Estimate, Run, RunManager, RunNotFound, RunStatus, RunSummary
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -39,6 +39,16 @@ def create_run(
 @router.get("", response_model=list[RunSummary])
 def list_runs(manager: Manager) -> list[RunSummary]:
     return manager.list()
+
+
+@router.get("/estimate", response_model=Estimate)
+def estimate_run(
+    manager: Manager,
+    chars: Annotated[int, Query(ge=0, le=10_000_000)],
+    include_plan: bool = True,
+) -> Estimate:
+    """Expected run time for a transcript of this many characters."""
+    return manager.estimate(chars, include_plan)
 
 
 @router.get("/{run_id}", response_model=Run)

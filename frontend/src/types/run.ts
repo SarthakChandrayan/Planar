@@ -9,6 +9,13 @@ export interface RunProgress {
   total_steps: number
   stage_tokens: number
   total_tokens: number
+  eta_seconds: number | null
+}
+
+export interface Estimate {
+  seconds: number
+  chunks: number
+  basis: 'default' | 'this machine'
 }
 
 export interface RunSummary {

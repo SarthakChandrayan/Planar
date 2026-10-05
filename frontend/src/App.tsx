@@ -3,6 +3,7 @@ import { ApiError } from './api/client'
 import {
   cancelRun,
   deleteRun,
+  getEstimate,
   getReadiness,
   getRun,
   listRuns,
@@ -13,12 +14,19 @@ import { AnalysisReport } from './components/AnalysisReport'
 import { ForgeClock, type ForgeStage } from './components/ForgeClock'
 import { MeetingInput, MIN_TRANSCRIPT_CHARS } from './components/MeetingInput'
 import { RecentRuns } from './components/RecentRuns'
-import { formatElapsed } from './formatElapsed'
-import { isFinished, type Readiness, type Run, type RunSummary } from './types/run'
+import { formatApprox, formatElapsed } from './formatElapsed'
+import {
+  isFinished,
+  type Estimate,
+  type Readiness,
+  type Run,
+  type RunSummary,
+} from './types/run'
 import './App.css'
 
 const ACTIVE_RUN_KEY = 'planar.activeRun'
 const POLL_MS = 2000
+const ESTIMATE_DEBOUNCE_MS = 400
 
 function readActiveRun(): string | null {
   try {
@@ -59,6 +67,7 @@ function App() {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [readiness, setReadiness] = useState<Readiness | null>(null)
   const [recent, setRecent] = useState<RunSummary[]>([])
+  const [estimate, setEstimate] = useState<Estimate | null>(null)
   const startedAtRef = useRef<number | null>(null)
 
   const loading = activeRun != null
@@ -147,6 +156,25 @@ function App() {
       window.clearTimeout(timer)
     }
   }, [activeId, finishRun])
+
+  // Expected duration for the pasted transcript, from this machine's past runs.
+  const transcriptChars = transcript.trim().length
+  const longEnough = transcriptChars >= MIN_TRANSCRIPT_CHARS
+  useEffect(() => {
+    if (!longEnough) {
+      return
+    }
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      getEstimate(transcriptChars, controller.signal)
+        .then(setEstimate)
+        .catch(() => setEstimate(null))
+    }, ESTIMATE_DEBOUNCE_MS)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [transcriptChars, longEnough])
 
   // Wall clock while a run is active, measured from the server's start time.
   useEffect(() => {
@@ -247,6 +275,7 @@ function App() {
         step: activeRun.progress.step,
         total: activeRun.progress.total_steps,
         tokens: activeRun.progress.stage_tokens,
+        etaSeconds: activeRun.progress.eta_seconds ?? null,
       }
     : null
 
@@ -257,6 +286,13 @@ function App() {
       disabled={loading}
       elapsedLabel={loading ? formatElapsed(elapsedMs) : null}
       error={loading ? null : error}
+      estimateLabel={
+        estimate && longEnough
+          ? `${formatApprox(estimate.seconds)}${
+              estimate.basis === 'default' ? ' (rough estimate)' : ' on this machine'
+            }`
+          : null
+      }
       onChange={(value) => {
         setTranscript(value)
         if (error) {

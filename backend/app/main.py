@@ -71,7 +71,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         manager = RunManager(
-            settings.runs_dir, build_runner(settings), error_message=error_message
+            settings.runs_dir,
+            build_runner(settings),
+            error_message=error_message,
+            chunk_max_tokens=settings.chunk_max_tokens,
         )
         manager.start()
         app.state.run_manager = manager

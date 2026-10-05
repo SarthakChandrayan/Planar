@@ -5,6 +5,7 @@ interface MeetingInputProps {
   disabled: boolean
   elapsedLabel: string | null
   error: string | null
+  estimateLabel?: string | null
   onChange: (value: string) => void
   onSubmit: () => void
 }
@@ -16,6 +17,7 @@ export function MeetingInput({
   disabled,
   elapsedLabel,
   error,
+  estimateLabel = null,
   onChange,
   onSubmit,
 }: MeetingInputProps) {
@@ -55,6 +57,9 @@ export function MeetingInput({
         <p className={tooShort ? 'char-count warn' : 'char-count'}>
           {count.toLocaleString()}
           {tooShort ? ` / ${MIN_TRANSCRIPT_CHARS}` : null}
+          {estimateLabel && !disabled ? (
+            <span className="estimate"> · {estimateLabel}</span>
+          ) : null}
         </p>
         <button type="button" onClick={onSubmit} disabled={disabled}>
           {disabled ? `Forging ${elapsedLabel ?? ''}`.trim() : 'Forge'}
