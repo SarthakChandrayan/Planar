@@ -1,6 +1,15 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Any
 
-from app.domain.models import NonEmptyString
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+
+def _clean_ids(value: object) -> object:
+    if isinstance(value, list):
+        return [str(item).strip().upper() for item in value if str(item).strip()]
+    return value
+
+
+ItemIds = Annotated[list[str], BeforeValidator(_clean_ids)]
 
 
 class ExtractionModel(BaseModel):
@@ -9,20 +18,43 @@ class ExtractionModel(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
 
-class ExtractedPlanEvidence(ExtractionModel):
-    excerpt: NonEmptyString
-
-
 class ExtractedPlanStep(ExtractionModel):
-    title: NonEmptyString
-    description: NonEmptyString
-    related_requirement_ids: list[str] = Field(default_factory=list)
-    related_task_ids: list[str] = Field(default_factory=list)
-    evidence: list[ExtractedPlanEvidence] = Field(default_factory=list)
+    title: str = Field(min_length=1)
+    description: str = ""
+    requirement_ids: ItemIds = Field(default_factory=list)
+    task_ids: ItemIds = Field(default_factory=list)
 
 
 class ExtractedImplementationPlan(ExtractionModel):
-    title: NonEmptyString
-    summary: NonEmptyString
+    title: str = ""
+    summary: str = ""
     steps: list[ExtractedPlanStep] = Field(default_factory=list)
-    acceptance_criteria: list[NonEmptyString] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+
+
+_STRING = {"type": "string"}
+_IDS = {"type": "array", "items": {"type": "string"}, "maxItems": 8}
+
+PLAN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": _STRING,
+        "summary": _STRING,
+        "steps": {
+            "type": "array",
+            "maxItems": 15,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": _STRING,
+                    "description": _STRING,
+                    "requirement_ids": _IDS,
+                    "task_ids": _IDS,
+                },
+                "required": ["title", "description", "requirement_ids", "task_ids"],
+            },
+        },
+        "acceptance_criteria": {"type": "array", "items": _STRING, "maxItems": 6},
+    },
+    "required": ["title", "summary", "steps", "acceptance_criteria"],
+}

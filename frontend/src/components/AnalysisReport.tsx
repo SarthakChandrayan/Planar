@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnalyzeMeetingError, createImplementationPlan } from '../api/meetings'
+import { ApiError } from '../api/client'
+import { createImplementationPlan } from '../api/meetings'
 import { formatElapsed } from '../formatElapsed'
 import { buildTraceIndex } from '../trace'
 import type { MeetingAnalysis } from '../types/analysis'
@@ -18,6 +19,9 @@ interface AnalysisReportProps {
   meetingName: string | null
   analysis: MeetingAnalysis
   durationMs: number | null
+  initialPlan?: ImplementationPlan | null
+  warnings?: string[]
+  reportHref?: string | null
   onReset: () => void
 }
 
@@ -25,10 +29,13 @@ export function AnalysisReport({
   meetingName,
   analysis,
   durationMs,
+  initialPlan = null,
+  warnings = [],
+  reportHref = null,
   onReset,
 }: AnalysisReportProps) {
   const [section, setSection] = useState<RecordSection>('all')
-  const [plan, setPlan] = useState<ImplementationPlan | null>(null)
+  const [plan, setPlan] = useState<ImplementationPlan | null>(initialPlan)
   const [planning, setPlanning] = useState(false)
   const [planError, setPlanError] = useState<string | null>(null)
   const [planElapsedMs, setPlanElapsedMs] = useState(0)
@@ -80,10 +87,11 @@ export function AnalysisReport({
   }, [planning])
 
   useEffect(() => {
-    if (plan) {
+    // Scroll only to a plan generated on demand, not one loaded with the run.
+    if (plan && plan !== initialPlan) {
       planRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-  }, [plan])
+  }, [plan, initialPlan])
 
   useEffect(() => {
     const targetId = pendingTraceIdRef.current
@@ -140,7 +148,7 @@ export function AnalysisReport({
       setPlan(result)
       setPlanDurationMs(Date.now() - startedAt)
     } catch (caught) {
-      if (caught instanceof AnalyzeMeetingError) {
+      if (caught instanceof ApiError) {
         setPlanError(caught.message)
       } else {
         setPlanError('Could not derive an implementation plan.')
@@ -174,6 +182,11 @@ export function AnalysisReport({
                     ? 'Regenerate plan'
                     : 'Generate Implementation Plan'}
               </button>
+              {reportHref ? (
+                <a className="button-link button-secondary" href={reportHref} download>
+                  Download .md
+                </a>
+              ) : null}
               <button
                 type="button"
                 className="button-secondary"
@@ -191,6 +204,17 @@ export function AnalysisReport({
               elapsedMs={planElapsedMs}
               message="Deriving the implementation plan from this record. Local inference — not a chat."
             />
+          ) : null}
+
+          {warnings.length > 0 ? (
+            <div className="run-warnings" role="note">
+              <p className="field-caption">Heads up</p>
+              <ul>
+                {warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {planError ? (

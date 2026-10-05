@@ -6,6 +6,10 @@ class EmptyTranscriptError(AnalysisError):
     """Raised when the transcript is missing or blank."""
 
 
+class TranscriptTooLongError(AnalysisError):
+    """Raised when the transcript exceeds the configured size limit."""
+
+
 class AnalysisValidationError(AnalysisError):
     """Raised when LLM output cannot be turned into a valid MeetingAnalysis."""
 

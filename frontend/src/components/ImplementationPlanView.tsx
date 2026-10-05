@@ -50,9 +50,7 @@ export function ImplementationPlanView({
                       ...resolveTraceLinks(step.related_task_ids, traceIndex),
                     ]}
                   />
-                  <Evidence
-                    excerpts={(step.evidence ?? []).map((item) => item.excerpt)}
-                  />
+                  <Evidence refs={step.evidence ?? []} />
                 </article>
               </li>
             ))}

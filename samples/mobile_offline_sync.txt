@@ -1,0 +1,45 @@
+Meeting: Mobile Offline Mode Planning
+Date: 2026-09-28
+Participants:
+- Ana — Mobile Lead
+- Ben — iOS Engineer
+- Chen — Android Engineer
+- Dee — Backend Engineer
+- Eli — Product Manager
+
+Eli: The goal for this cycle is offline mode for field technicians. They lose signal in basements and need to keep filling in inspection forms.
+Ana: Right. Let's settle storage first. I'd like us to store drafts locally in SQLite on both platforms, not in the platform key-value stores.
+Ben: Agreed on SQLite. On iOS I'd wrap it with GRDB.
+Chen: Room on Android is fine, it's SQLite underneath.
+Ana: Okay, decision: SQLite for local drafts on both platforms, GRDB on iOS and Room on Android.
+
+Dee: How do we resolve conflicts when two technicians edit the same inspection offline?
+Ben: We could do full CRDTs.
+Ana: That's too much for this cycle. Let's use last-write-wins per field, using the server receive time. We can revisit CRDTs next year.
+Dee: Fine. Then the sync API must accept per-field timestamps and return the merged record.
+Eli: One requirement from the customer side: a technician must never lose a draft, even if the app is killed mid-save.
+Ana: So writes have to be transactional and we flush on every field change, not on screen exit.
+
+Chen: What about photos? They're big. A single inspection can have twenty photos.
+Dee: Photos should upload separately from form data, in the background, and resume after interruption. The form sync shouldn't wait for photos.
+Ana: Agreed, photos go through a separate resumable upload queue.
+Eli: Is there a storage cap on the device? Some technicians have old phones with little space.
+Ana: I don't know yet. We need data on device storage across the fleet before we pick a cap. Eli, can you get that from the MDM reports?
+Eli: Yes, I'll pull the device storage numbers from MDM by next Wednesday.
+
+Dee: Risk I see: if the clocks on devices are wrong, last-write-wins on device time will silently overwrite newer edits.
+Ana: That's why we use server receive time, not device time. But queued edits from a phone that was offline for days could still clobber a newer edit made online.
+Dee: Yes, that's a real risk for long offline periods. We should at least log every overwrite so support can recover data.
+Ben: Another risk: iOS can kill background uploads if the app is suspended too long. Large photo queues might never finish.
+Ana: Let's use background URLSession on iOS so the OS keeps the transfer going.
+
+Ana: Action items. Ben, prototype the SQLite draft store with GRDB, including crash-safe writes, by Friday.
+Ben: Will do.
+Ana: Chen, the same on Android with Room.
+Chen: Got it, by Friday too.
+Ana: Dee, add per-field timestamps to the sync API and write the merge endpoint. Done when two conflicting offline edits merge field by field and every overwrite is logged.
+Dee: Okay, I'll have a draft API spec by Thursday.
+Ana: And I'll design the resumable photo upload queue.
+Eli: Open item from my side: do we need offline mode for the admin web app too, or only mobile? Sales keeps asking. Nobody has decided that.
+Ana: Not decided. Park it until we have the mobile version working.
+Eli: Fine. To recap: SQLite drafts, last-write-wins per field on server time, separate resumable photo uploads, and the storage cap is pending data.

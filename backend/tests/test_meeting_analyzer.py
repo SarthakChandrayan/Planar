@@ -1,679 +1,337 @@
-import json
-from typing import Any
-
 import pytest
 
-from app.analysis import AnalysisValidationError, EmptyTranscriptError, MeetingAnalyzer
-from app.analysis.prompts import MEETING_ANALYSIS_INSTRUCTIONS, build_meeting_analysis_prompt
-from app.domain import MeetingAnalysis, Priority, Severity
-from app.llm import LLMUnavailableError
-from app.llm.provider import LLMProvider
-from tests.fixtures.payment_meeting import (
-    DECISION_MEETING_TRANSCRIPT,
-    OPEN_QUESTION_MEETING_TRANSCRIPT,
-    PAYMENT_MEETING_TRANSCRIPT,
-    REQUIREMENT_MEETING_TRANSCRIPT,
-    RISK_MEETING_TRANSCRIPT,
-    SUGGESTION_MEETING_TRANSCRIPT,
-    TASK_MEETING_TRANSCRIPT,
+from app.analysis import (
+    AnalysisValidationError,
+    EmptyTranscriptError,
+    MeetingAnalyzer,
+    TranscriptTooLongError,
 )
+from app.domain import Priority, Severity
+from app.llm import LLMOutputTruncatedError, LLMUnavailableError
+from tests.fakes import FailingLLM, ScriptedLLM
+from tests.fixtures.payment_meeting import PAYMENT_MEETING_TRANSCRIPT
+
+# Original line numbers in PAYMENT_MEETING_TRANSCRIPT. The model sees only
+# non-blank lines, numbered densely, so it cites e.g. L3 for original line 4:
+#  4 Omar: Agreed. We will route all new card-not-present charges through Stripe PaymentIntents.
+#  7 Omar: Settlement cut-off stays at 22:00 UTC. ...
+# 10 Priya: POST /v1/charges must honor an Idempotency-Key header. ...
+# 13 Priya: Concrete work: add idempotency middleware to POST /v1/charges.
+# 14 Omar: Done means a repeated request with the same key and body returns the original charge.
+# 18 Omar: Also document capture decline codes for client teams.
+# 20 Priya: Risk: if the webhook handler and the nightly capture worker both settle ...
+# 23 Omar: Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?
+
+DECISIONS = {
+    "decisions": [
+        {
+            "statement": "Route all new card-not-present charges through Stripe PaymentIntents.",
+            "lines": [3],
+        },
+        {"statement": "Settlement cut-off stays at 22:00 UTC this quarter.", "lines": [5]},
+    ]
+}
+REQUIREMENTS = {
+    "requirements": [
+        {
+            "statement": "POST /v1/charges must honor an Idempotency-Key header.",
+            "lines": [7],
+            "decision_ids": ["DEC-001", "DEC-999"],
+        }
+    ]
+}
+TASKS = {
+    "tasks": [
+        {
+            "title": "Add idempotency middleware to POST /v1/charges",
+            "description": "Middleware that replays the original charge for a repeated key.",
+            "owner": "Priya",
+            "due": "",
+            "priority": "high",
+            "acceptance_criteria": [
+                "A repeated request with the same key and body returns the original charge."
+            ],
+            "lines": [9, 10],
+            "requirement_ids": ["REQ-001"],
+        },
+        {
+            "title": "Document capture decline codes for client teams",
+            "description": "",
+            "owner": "the team",
+            "due": "next Tuesday",
+            "priority": "urgent!!",
+            "acceptance_criteria": [],
+            "lines": [13],
+            "requirement_ids": [],
+        },
+    ]
+}
+RISKS = {
+    "risks": [
+        {
+            "description": "Webhook handler and nightly capture worker may both settle the same PaymentIntent and double-charge customers.",
+            "severity": "critical",
+            "lines": [14],
+            "requirement_ids": ["REQ-001"],
+        }
+    ],
+    "open_questions": [
+        {
+            "question": "Should Apple Pay ship with the PaymentIntents rollout or as a follow-up?",
+            "context": "",
+            "lines": [16],
+            "requirement_ids": [],
+        }
+    ],
+}
 
 
-class FakeLLMProvider(LLMProvider):
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self.prompts: list[str] = []
-
-    def generate(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        return self.text
+def _full_llm() -> ScriptedLLM:
+    return ScriptedLLM(
+        {"decisions": DECISIONS, "requirements": REQUIREMENTS, "tasks": TASKS, "risks": RISKS}
+    )
 
 
-class FailingLLMProvider(LLMProvider):
-    def __init__(self, error: Exception) -> None:
-        self.error = error
-
-    def generate(self, prompt: str) -> str:
-        raise self.error
+def test_runs_four_focused_passes_in_order() -> None:
+    llm = _full_llm()
+    MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert [key for key, _ in llm.calls] == ["decisions", "requirements", "tasks", "risks"]
 
 
-def _json(payload: dict[str, Any]) -> str:
-    return json.dumps(payload)
+def test_prompts_share_the_transcript_prefix_for_cache_reuse() -> None:
+    llm = _full_llm()
+    MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    prefixes = {prompt.split("END OF TRANSCRIPT")[0] for _, prompt in llm.calls}
+    assert len(prefixes) == 1
+    assert "L3: Omar: Agreed." in next(iter(prefixes))
 
 
-def _empty_analysis(**overrides: object) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "decisions": [],
-        "requirements": [],
-        "tasks": [],
-        "risks": [],
+def test_items_get_ids_and_evidence_from_cited_lines() -> None:
+    analysis = MeetingAnalyzer(_full_llm()).analyze(PAYMENT_MEETING_TRANSCRIPT)
+
+    first = analysis.decisions[0]
+    assert first.id == "DEC-001"
+    assert first.source_reference.line_start == 4
+    assert first.source_reference.speaker == "Omar"
+    assert "Stripe PaymentIntents" in first.source_reference.excerpt
+    assert 0.0 < first.confidence <= 1.0
+    assert [d.id for d in analysis.decisions] == ["DEC-001", "DEC-002"]
+
+
+def test_passes_never_see_other_passes_items() -> None:
+    llm = _full_llm()
+    MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+
+    # A small model copies any list it is shown, so none is shown.
+    assert "DEC-001" not in llm.prompts_for("requirements")[0]
+    assert "Route all new card-not-present charges" not in llm.prompts_for("requirements")[0].split("END OF TRANSCRIPT")[1]
+    assert "REQ-001" not in llm.prompts_for("tasks")[0]
+
+
+def test_links_are_inferred_from_wording_and_shared_lines() -> None:
+    analysis = MeetingAnalyzer(_full_llm()).analyze(PAYMENT_MEETING_TRANSCRIPT)
+
+    # The idempotency task clearly implements the idempotency requirement.
+    assert analysis.tasks[0].related_requirement_ids == ["REQ-001"]
+    # The docs task and the routing decision share no distinctive wording.
+    assert analysis.tasks[1].related_requirement_ids == []
+    assert analysis.requirements[0].related_decision_ids == []
+
+
+def test_requirement_risk_links_are_mirrored() -> None:
+    risks = {
+        "risks": [
+            {
+                "description": "Clients may not honor the Idempotency-Key header on POST /v1/charges.",
+                "severity": "high",
+                "lines": [7],
+            }
+        ],
         "open_questions": [],
     }
-    payload.update(overrides)
-    return payload
+    llm = ScriptedLLM({"requirements": REQUIREMENTS, "risks": risks})
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+
+    assert analysis.risks[0].related_requirement_ids == ["REQ-001"]
+    assert analysis.requirements[0].related_risk_ids == ["RSK-001"]
 
 
-_CLAIM_SUPPORT_TRANSCRIPT = """
-Maya: Postgres is the source of truth for payment idempotency.
-Arjun: We'll keep PostgreSQL as the authoritative database for idempotency.
-Daniel: If Stripe succeeds but the local database write fails, the customer sees success and we have no local record.
-Daniel: Eventually isn't good enough if the customer sees an order stuck in pending.
-Priya: One concern is that requests with the same key but different bodies could cause inconsistent behavior.
-Omar: add idempotency middleware to POST /v1/charges.
-Priya: Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?
-""".strip()
-
-_IDEMPOTENCY_BODY_EXCERPT = (
-    "One concern is that requests with the same key but different bodies "
-    "could cause inconsistent behavior."
-)
-_STRIPE_DB_EXCERPT = (
-    "If Stripe succeeds but the local database write fails, the customer "
-    "sees success and we have no local record."
-)
-_WEBHOOK_PENDING_EXCERPT = (
-    "Eventually isn't good enough if the customer sees an order stuck in pending."
-)
-_APPLE_PAY_EXCERPT = (
-    "Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?"
-)
-_IDEMPOTENCY_TASK_EXCERPT = "add idempotency middleware to POST /v1/charges."
-
-
-def test_prompt_states_semantic_rules() -> None:
-    prompt = build_meeting_analysis_prompt("short transcript")
-
-    assert "A suggestion is NOT a decision" in MEETING_ANALYSIS_INSTRUCTIONS
-    assert "We could use Kafka." in MEETING_ANALYSIS_INSTRUCTIONS
-    assert "Maybe we should add Redis." in MEETING_ANALYSIS_INSTRUCTIONS
-    assert "Never use \"statement\" on a task" in MEETING_ANALYSIS_INSTRUCTIONS
-    assert "source_references" in MEETING_ANALYSIS_INSTRUCTIONS
-    assert "short transcript" in prompt
-    assert prompt.startswith(MEETING_ANALYSIS_INSTRUCTIONS)
-
-
-def test_explicit_decisions_are_extracted() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Freeze the public checkout API at /v1 until October.",
-                "confidence": 0.93,
-                "source_reference": {
-                    "excerpt": "We will freeze the public checkout API at /v1 until October."
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        DECISION_MEETING_TRANSCRIPT
-    )
-
-    assert len(analysis.decisions) == 1
-    assert analysis.decisions[0].id == "DEC-001"
-    assert "freeze the public checkout api" in analysis.decisions[0].statement.lower()
-
-
-def test_requirements_are_extracted() -> None:
-    payload = _empty_analysis(
-        requirements=[
-            {
-                "statement": "The refund endpoint must reject amounts greater than the original capture.",
-                "confidence": 0.9,
-                "source_reference": {
-                    "excerpt": "The refund endpoint must reject amounts greater than the original capture."
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        REQUIREMENT_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.requirements[0].id == "REQ-001"
-    assert "reject amounts" in analysis.requirements[0].statement
-
-
-def test_analyzer_does_not_invent_traceability_links() -> None:
-    payload = _empty_analysis(
-        requirements=[
-            {
-                "statement": "The refund endpoint must reject amounts greater than the original capture.",
-                "confidence": 0.9,
-                "source_reference": {
-                    "excerpt": "The refund endpoint must reject amounts greater than the original capture."
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        REQUIREMENT_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.requirements[0].related_decision_ids == []
-    assert analysis.requirements[0].related_risk_ids == []
-
-
-def test_engineering_tasks_are_extracted() -> None:
-    payload = _empty_analysis(
-        tasks=[
-            {
-                "title": "Implement DLQ consumer for failed captures",
-                "description": "Park capture jobs after three failed retries.",
-                "priority": "high",
-                "acceptance_criteria": [
-                    "A failed capture is retried three times then parked."
-                ],
-                "source_references": [
-                    {
-                        "excerpt": "Please add a dead-letter queue for failed capture jobs this sprint."
-                    }
-                ],
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        TASK_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.tasks[0].id == "TSK-001"
-    assert analysis.tasks[0].priority is Priority.HIGH
-    assert analysis.tasks[0].acceptance_criteria
-
-
-def test_qwen_statement_shaped_tasks_and_questions_are_accepted() -> None:
-    payload = _empty_analysis(
-        tasks=[
-            {
-                "statement": "Implement the DLQ consumer for failed captures.",
-                "source_reference": {
-                    "excerpt": "Please add a dead-letter queue for failed capture jobs this sprint."
-                },
-            }
-        ],
-        open_questions=[
-            {
-                "statement": "Do we still need Braintree after the Stripe cutover?",
-                "source_reference": {
-                    "excerpt": "Do we still need Braintree after the Stripe cutover, or can we drop it next quarter?"
-                },
-            }
-        ],
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        TASK_MEETING_TRANSCRIPT + "\n" + OPEN_QUESTION_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.tasks[0].id == "TSK-001"
-    assert analysis.tasks[0].title.startswith("Implement the DLQ")
-    assert analysis.tasks[0].priority is Priority.MEDIUM
-    assert analysis.open_questions[0].id == "OQ-001"
-    assert "Braintree" in analysis.open_questions[0].question
-
-
-def test_risks_are_extracted() -> None:
-    payload = _empty_analysis(
-        risks=[
-            {
-                "description": "Logging raw PANs on declined auths expands PCI scope.",
-                "severity": "high",
-                "source_reference": {
-                    "excerpt": "logging raw PANs on declined auths will expand our PCI scope."
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        RISK_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.risks[0].id == "RSK-001"
-    assert analysis.risks[0].severity is Severity.HIGH
-
-
-def test_unresolved_questions_are_extracted() -> None:
-    payload = _empty_analysis(
-        open_questions=[
-            {
-                "question": "Do we still need Braintree after the Stripe cutover?",
-                "context": "Legal has not answered the contract question.",
-                "source_reference": {
-                    "excerpt": "Do we still need Braintree after the Stripe cutover, or can we drop it next quarter?"
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        OPEN_QUESTION_MEETING_TRANSCRIPT
-    )
-
-    assert analysis.open_questions[0].id == "OQ-001"
-    assert "Braintree" in analysis.open_questions[0].question
-
-
-def test_suggestions_must_not_become_decisions() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Settlement cut-off stays at 22:00 UTC.",
-                "confidence": 0.95,
-                "source_reference": {
-                    "excerpt": "Settlement cut-off stays at 22:00 UTC."
-                },
-            }
-        ],
-        open_questions=[
-            {
-                "question": "Should settlement events go on Kafka?",
-                "context": "Suggested but not decided.",
-                "source_reference": {
-                    "excerpt": "We could use Kafka for the settlement event bus."
-                },
+def test_requirement_restating_a_decision_is_dropped() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": DECISIONS,
+            "requirements": {
+                "requirements": [
+                    {"statement": "Route all new card-not-present charges through Stripe PaymentIntents.", "lines": [3]}
+                ]
             },
-            {
-                "question": "Should idempotency keys be stored in Redis?",
-                "context": "Suggested but not accepted.",
-                "source_reference": {
-                    "excerpt": "Maybe we should add Redis for storing idempotency keys."
-                },
-            },
-        ],
+        }
     )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        SUGGESTION_MEETING_TRANSCRIPT
-    )
-
-    decision_text = " ".join(item.statement.lower() for item in analysis.decisions)
-    assert "kafka" not in decision_text
-    assert "redis" not in decision_text
-    assert any("22:00 UTC" in item.statement for item in analysis.decisions)
-    assert len(analysis.open_questions) == 2
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert analysis.requirements == []
 
 
-def test_payment_fixture_analysis_assigns_deterministic_ids() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "id": "ignored-id",
-                "statement": "Route all new CNP charges through Stripe PaymentIntents.",
-                "confidence": 0.94,
-                "source_reference": {
-                    "excerpt": "We will route all new card-not-present charges through Stripe PaymentIntents."
-                },
-            },
-            {
-                "statement": "Keep settlement cut-off at 22:00 UTC.",
-                "confidence": 0.9,
-                "source_reference": {
-                    "excerpt": "Settlement cut-off stays at 22:00 UTC."
-                },
-            },
-        ],
-        requirements=[
-            {
-                "statement": "POST /v1/charges must honor Idempotency-Key.",
-                "confidence": 0.96,
-                "source_reference": {
-                    "excerpt": "POST /v1/charges must honor an Idempotency-Key header."
-                },
-            },
-            {
-                "statement": "Failed captures must return a machine-readable decline_code.",
-                "confidence": 0.84,
-                "source_reference": {
-                    "excerpt": "Failed captures must return a machine-readable decline_code so support is not guessing."
-                },
-            },
-        ],
-        tasks=[
-            {
-                "title": "Add idempotency middleware to POST /v1/charges",
-                "description": "Replay or reject duplicate charges using Idempotency-Key.",
-                "priority": "high",
-                "acceptance_criteria": [
-                    "A repeated request with the same key and body returns the original charge.",
-                    "A repeated request with the same key and a different body returns HTTP 409.",
-                ],
-                "source_references": [
-                    {
-                        "excerpt": "add idempotency middleware to POST /v1/charges."
-                    }
-                ],
+def test_task_owner_due_priority_are_cleaned() -> None:
+    analysis = MeetingAnalyzer(_full_llm()).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    middleware, docs = analysis.tasks
+
+    assert middleware.owner == "Priya"
+    assert middleware.due is None
+    assert middleware.priority == Priority.HIGH
+    assert middleware.acceptance_criteria
+    assert middleware.source_references[0].line_start == 13
+
+    assert docs.owner is None  # generic owner rejected
+    assert docs.due is None  # "next Tuesday" is not in the transcript
+    assert docs.priority == Priority.MEDIUM  # unknown priority falls back
+    assert docs.description == docs.title
+
+
+def test_risks_and_open_questions() -> None:
+    analysis = MeetingAnalyzer(_full_llm()).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert analysis.risks[0].severity == Severity.CRITICAL
+    question = analysis.open_questions[0]
+    assert question.id == "OQ-001"
+    # Empty context falls back to the cited line.
+    assert "Apple Pay" in question.context
+
+
+def test_claim_unsupported_by_cited_lines_is_dropped() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {"statement": "Adopt Kubernetes autoscaling for the fraud cluster.", "lines": [3]}
+                ]
             }
-        ],
-        risks=[
-            {
-                "description": "Double-charging if webhook and nightly worker both capture.",
-                "severity": "critical",
-                "source_reference": {
-                    "excerpt": "if the webhook handler and the nightly capture worker both settle the same PaymentIntent, we will double-charge customers."
-                },
-            }
-        ],
-        open_questions=[
-            {
-                "question": "Should Apple Pay ship with this PaymentIntents rollout?",
-                "context": "Mobile still uses Braintree for wallets.",
-                "source_reference": {
-                    "excerpt": "Should Apple Pay go out with this PaymentIntents rollout, or is that a follow-up?"
-                },
-            }
-        ],
+        }
     )
-    provider = FakeLLMProvider(_json(payload))
-    analysis = MeetingAnalyzer(provider).analyze(PAYMENT_MEETING_TRANSCRIPT)
-
-    assert isinstance(analysis, MeetingAnalysis)
-    assert [item.id for item in analysis.decisions] == ["DEC-001", "DEC-002"]
-    assert [item.id for item in analysis.requirements] == ["REQ-001", "REQ-002"]
-    assert analysis.tasks[0].id == "TSK-001"
-    assert analysis.risks[0].id == "RSK-001"
-    assert analysis.open_questions[0].id == "OQ-001"
-    assert PAYMENT_MEETING_TRANSCRIPT in provider.prompts[0]
-    assert "Kafka" in PAYMENT_MEETING_TRANSCRIPT
-
-
-def test_malformed_llm_output_is_rejected() -> None:
-    analyzer = MeetingAnalyzer(FakeLLMProvider("this is not json"))
-
-    with pytest.raises(AnalysisValidationError):
-        analyzer.analyze(DECISION_MEETING_TRANSCRIPT)
-
-
-def test_invalid_confidence_is_rejected() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Freeze /v1.",
-                "confidence": 1.5,
-                "source_reference": {
-                    "excerpt": "We will freeze the public checkout API at /v1 until October."
-                },
-            }
-        ]
-    )
-    analyzer = MeetingAnalyzer(FakeLLMProvider(_json(payload)))
-
-    with pytest.raises(AnalysisValidationError):
-        analyzer.analyze(DECISION_MEETING_TRANSCRIPT)
-
-
-def test_missing_required_fields_are_rejected() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "confidence": 0.9,
-                "source_reference": {
-                    "excerpt": "We will freeze the public checkout API at /v1 until October."
-                },
-            }
-        ]
-    )
-    analyzer = MeetingAnalyzer(FakeLLMProvider(_json(payload)))
-
-    with pytest.raises(AnalysisValidationError):
-        analyzer.analyze(DECISION_MEETING_TRANSCRIPT)
-
-
-def test_invented_source_excerpt_is_dropped() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Freeze the public checkout API at /v1 until October.",
-                "confidence": 0.93,
-                "source_reference": {
-                    "excerpt": "We will freeze the public checkout API at /v1 until October."
-                },
-            },
-            {
-                "statement": "Use Kafka.",
-                "confidence": 0.9,
-                "source_reference": {"excerpt": "We unanimously voted to adopt Kafka today."},
-            },
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        DECISION_MEETING_TRANSCRIPT
-    )
-
-    assert [item.statement for item in analysis.decisions] == [
-        "Freeze the public checkout API at /v1 until October."
-    ]
-    assert analysis.decisions[0].id == "DEC-001"
-
-
-def test_all_invented_excerpts_yield_empty_analysis() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Use Kafka.",
-                "confidence": 0.9,
-                "source_reference": {"excerpt": "We unanimously voted to adopt Kafka today."},
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        DECISION_MEETING_TRANSCRIPT
-    )
-
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
     assert analysis.decisions == []
 
 
-def test_matching_source_excerpt_is_kept() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Postgres is the source of truth for payment idempotency.",
-                "confidence": 0.94,
-                "source_reference": {
-                    "excerpt": "Postgres is the source of truth for payment idempotency."
-                },
+def test_off_by_one_citation_is_reanchored_nearby() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {
+                        "statement": "Use the existing Postgres unique constraint instead of Redis.",
+                        "lines": [20],
+                    }
+                ]
             }
-        ]
+        }
     )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert analysis.decisions[0].source_reference.line_start == 30
 
+
+def test_out_of_range_lines_are_ignored() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {"statement": "Settlement cut-off stays at 22:00 UTC.", "lines": [5, 999, "L0"]}
+                ]
+            }
+        }
+    )
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    ref = analysis.decisions[0].source_reference
+    assert (ref.line_start, ref.line_end) == (7, 7)
+
+
+def test_duplicates_are_merged() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": {
+                "decisions": [
+                    {"statement": "Settlement cut-off stays at 22:00 UTC.", "lines": [5]},
+                    {"statement": "The settlement cut-off stays at 22:00 UTC this quarter.", "lines": [5]},
+                ]
+            }
+        }
+    )
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
     assert len(analysis.decisions) == 1
-    assert analysis.decisions[0].id == "DEC-001"
-    assert "postgres" in analysis.decisions[0].statement.lower()
 
 
-def test_verbatim_but_unrelated_excerpt_is_dropped() -> None:
-    payload = _empty_analysis(
-        risks=[
-            {
-                "description": "Stripe succeeds but the local database write fails.",
-                "severity": "high",
-                "source_reference": {"excerpt": _IDEMPOTENCY_BODY_EXCERPT},
-            }
-        ]
+def test_invalid_pass_output_is_retried_with_a_note() -> None:
+    llm = ScriptedLLM({"decisions": ["not json at all", DECISIONS]})
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+
+    prompts = llm.prompts_for("decisions")
+    assert len(prompts) == 2
+    assert "did not match the required JSON shape" in prompts[1]
+    assert len(analysis.decisions) == 2
+
+
+def test_truncated_pass_is_retried_asking_for_fewer_items() -> None:
+    llm = ScriptedLLM({"decisions": [LLMOutputTruncatedError("too long"), DECISIONS]})
+    MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert "too long" in llm.prompts_for("decisions")[1]
+
+
+def test_a_failing_pass_becomes_a_warning_not_a_failure() -> None:
+    llm = ScriptedLLM({"decisions": "garbage", "tasks": TASKS})
+    outcome = MeetingAnalyzer(llm).run(PAYMENT_MEETING_TRANSCRIPT)
+
+    assert outcome.analysis.decisions == []
+    assert len(outcome.analysis.tasks) == 2
+    assert any("Decisions" in warning for warning in outcome.warnings)
+
+
+def test_all_passes_failing_raises_validation_error() -> None:
+    llm = ScriptedLLM(
+        {"decisions": "x", "requirements": "x", "tasks": "x", "risks": "x"}
     )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert analysis.risks == []
+    with pytest.raises(AnalysisValidationError):
+        MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
 
 
-def test_mismatched_risk_excerpts_are_dropped() -> None:
-    payload = _empty_analysis(
-        risks=[
-            {
-                "description": "Stripe succeeds but the local database write fails.",
-                "severity": "high",
-                "source_reference": {"excerpt": _IDEMPOTENCY_BODY_EXCERPT},
-            },
-            {
-                "description": (
-                    "Asynchronous webhook processing may leave a customer "
-                    "order pending."
-                ),
-                "severity": "medium",
-                "source_reference": {"excerpt": _IDEMPOTENCY_BODY_EXCERPT},
-            },
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert analysis.risks == []
-
-
-def test_matching_stripe_db_risk_excerpt_is_kept() -> None:
-    payload = _empty_analysis(
-        risks=[
-            {
-                "description": "Stripe succeeds but the local database write fails.",
-                "severity": "high",
-                "source_reference": {"excerpt": _STRIPE_DB_EXCERPT},
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert len(analysis.risks) == 1
-    assert analysis.risks[0].id == "RSK-001"
-    assert "stripe" in analysis.risks[0].description.lower()
-    assert analysis.risks[0].source_reference.excerpt == _STRIPE_DB_EXCERPT
-
-
-def test_matching_webhook_risk_excerpt_is_kept() -> None:
-    payload = _empty_analysis(
-        risks=[
-            {
-                "description": (
-                    "Asynchronous webhook processing may leave a customer "
-                    "order pending."
-                ),
-                "severity": "medium",
-                "source_reference": {"excerpt": _WEBHOOK_PENDING_EXCERPT},
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert len(analysis.risks) == 1
-    assert analysis.risks[0].id == "RSK-001"
-    assert "webhook" in analysis.risks[0].description.lower()
-    assert analysis.risks[0].source_reference.excerpt == _WEBHOOK_PENDING_EXCERPT
-
-
-def test_paraphrase_alias_excerpt_is_kept() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Postgres is the source of truth for idempotency.",
-                "confidence": 0.91,
-                "source_reference": {
-                    "excerpt": (
-                        "We'll keep PostgreSQL as the authoritative database "
-                        "for idempotency."
-                    )
-                },
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert len(analysis.decisions) == 1
-    assert "postgres" in analysis.decisions[0].statement.lower()
-
-
-def test_task_keeps_only_supporting_source_references() -> None:
-    payload = _empty_analysis(
-        tasks=[
-            {
-                "title": "Add idempotency middleware to POST /v1/charges",
-                "description": "Replay or reject duplicate charges using Idempotency-Key.",
-                "priority": "high",
-                "acceptance_criteria": [
-                    "A repeated request with the same key and body returns the original charge."
-                ],
-                "source_references": [
-                    {"excerpt": _IDEMPOTENCY_TASK_EXCERPT},
-                    {"excerpt": _APPLE_PAY_EXCERPT},
-                ],
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert len(analysis.tasks) == 1
-    assert analysis.tasks[0].id == "TSK-001"
-    assert [ref.excerpt for ref in analysis.tasks[0].source_references] == [
-        _IDEMPOTENCY_TASK_EXCERPT
-    ]
-
-
-def test_task_is_dropped_when_all_source_references_are_unsupported() -> None:
-    payload = _empty_analysis(
-        tasks=[
-            {
-                "title": "Add idempotency middleware to POST /v1/charges",
-                "description": "Replay or reject duplicate charges using Idempotency-Key.",
-                "priority": "high",
-                "acceptance_criteria": [
-                    "A repeated request with the same key and body returns the original charge."
-                ],
-                "source_references": [{"excerpt": _APPLE_PAY_EXCERPT}],
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert analysis.tasks == []
-
-
-def test_generic_claim_is_not_dropped_when_support_cannot_be_judged() -> None:
-    payload = _empty_analysis(
-        decisions=[
-            {
-                "statement": "Proceed.",
-                "confidence": 0.5,
-                "source_reference": {"excerpt": _IDEMPOTENCY_BODY_EXCERPT},
-            }
-        ]
-    )
-    analysis = MeetingAnalyzer(FakeLLMProvider(_json(payload))).analyze(
-        _CLAIM_SUPPORT_TRANSCRIPT
-    )
-
-    assert len(analysis.decisions) == 1
-    assert analysis.decisions[0].statement == "Proceed."
-
-
-def test_empty_transcript_is_rejected() -> None:
-    analyzer = MeetingAnalyzer(FakeLLMProvider("{}"))
-
-    with pytest.raises(EmptyTranscriptError):
-        analyzer.analyze("   ")
-
-
-def test_llm_provider_failure_is_propagated() -> None:
-    analyzer = MeetingAnalyzer(
-        FailingLLMProvider(LLMUnavailableError("Ollama server is unavailable."))
-    )
-
+def test_provider_errors_propagate() -> None:
     with pytest.raises(LLMUnavailableError):
-        analyzer.analyze(DECISION_MEETING_TRANSCRIPT)
+        MeetingAnalyzer(FailingLLM(LLMUnavailableError("down"))).analyze(
+            PAYMENT_MEETING_TRANSCRIPT
+        )
 
 
-def test_analyzer_depends_on_llm_provider_not_ollama() -> None:
-    from app.analysis.analyzer import MeetingAnalyzer as Analyzer
-    import inspect
+def test_empty_and_oversized_transcripts_are_rejected() -> None:
+    with pytest.raises(EmptyTranscriptError):
+        MeetingAnalyzer(ScriptedLLM()).analyze("   ")
+    with pytest.raises(TranscriptTooLongError):
+        MeetingAnalyzer(ScriptedLLM(), max_transcript_chars=10).analyze(
+            PAYMENT_MEETING_TRANSCRIPT
+        )
 
-    source = inspect.getsource(Analyzer)
-    assert "OllamaProvider" not in source
-    assert "LLMProvider" in source
+
+def test_long_transcripts_are_chunked_and_told_what_was_found() -> None:
+    llm = ScriptedLLM({"decisions": DECISIONS})
+    analyzer = MeetingAnalyzer(llm, chunk_max_tokens=500)
+    long_transcript = PAYMENT_MEETING_TRANSCRIPT + "\n" + "\n".join(
+        f"Omar: Filler discussion line {n} about lunch plans." for n in range(150)
+    )
+    outcome = analyzer.run(long_transcript)
+
+    assert outcome.chunks > 1
+    assert len(llm.prompts_for("decisions")) == outcome.chunks
+    assert "part 2 of" in llm.prompts_for("decisions")[1]
+    assert "ALREADY FOUND" in llm.prompts_for("decisions")[1]
+    # Same answer from every chunk is merged, not duplicated.
+    assert len(outcome.analysis.decisions) == 2
+
+
+def test_progress_is_reported_per_stage() -> None:
+    stages: list[tuple[str, int, int]] = []
+
+    class Recorder:
+        def stage(self, label: str, step: int, total: int) -> None:
+            stages.append((label, step, total))
+
+        def tokens(self, count: int) -> None:
+            pass
+
+    MeetingAnalyzer(_full_llm()).run(PAYMENT_MEETING_TRANSCRIPT, Recorder(), extra_stages=1)
+    assert stages[0] == ("Decisions", 1, 5)
+    assert stages[-1] == ("Risks & open questions", 4, 5)

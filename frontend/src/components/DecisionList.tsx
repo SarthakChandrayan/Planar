@@ -18,7 +18,7 @@ export function DecisionList({ items }: { items: Decision[] }) {
               <article className="card" data-trace-id={item.id}>
                 <ArtifactMeta id={item.id} confidence={item.confidence} />
                 <p className="artifact-body">{item.statement}</p>
-                <Evidence excerpts={[item.source_reference.excerpt]} />
+                <Evidence refs={[item.source_reference]} />
               </article>
             </li>
           ))}

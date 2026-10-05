@@ -27,7 +27,7 @@ export function OpenQuestionList({ items }: { items: OpenQuestion[] }) {
                 <Traceability
                   links={resolveTraceLinks(item.related_requirement_ids, traceIndex)}
                 />
-                <Evidence excerpts={[item.source_reference.excerpt]} />
+                <Evidence refs={[item.source_reference]} />
               </article>
             </li>
           ))}

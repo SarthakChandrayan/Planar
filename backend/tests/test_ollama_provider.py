@@ -1,10 +1,12 @@
-from unittest.mock import MagicMock, patch
+import json
+from collections.abc import Callable
 
 import httpx
 import pytest
 
 from app.llm.exceptions import (
     LLMHTTPError,
+    LLMOutputTruncatedError,
     LLMResponseError,
     LLMTimeoutError,
     LLMUnavailableError,
@@ -12,186 +14,178 @@ from app.llm.exceptions import (
 from app.llm.ollama import OllamaProvider
 from app.llm.provider import LLMProvider
 
-MODEL = "configured-model"
 BASE_URL = "http://localhost:11434"
 
 
-def _provider() -> OllamaProvider:
-    return OllamaProvider(base_url=BASE_URL, model=MODEL)
+def _stream(*chunks: dict) -> bytes:
+    return "\n".join(json.dumps(chunk) for chunk in chunks).encode()
 
 
-def _mock_client(response: MagicMock) -> MagicMock:
-    client = MagicMock()
-    client.post.return_value = response
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
-    return context
+def _provider(
+    handler: Callable[[httpx.Request], httpx.Response], **kwargs
+) -> OllamaProvider:
+    options = {"base_url": BASE_URL, "model": "configured-model"} | kwargs
+    return OllamaProvider(**options, transport=httpx.MockTransport(handler))
+
+
+def _ok_stream(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200,
+        content=_stream(
+            {"response": " An API ", "done": False},
+            {"response": "lets programs talk. ", "done": False},
+            {"response": "", "done": True, "done_reason": "stop", "eval_count": 2},
+        ),
+    )
 
 
 def test_ollama_provider_is_llm_provider() -> None:
-    assert isinstance(_provider(), LLMProvider)
+    assert isinstance(_provider(_ok_stream), LLMProvider)
 
 
-def test_generate_posts_to_ollama_and_returns_text() -> None:
-    response = MagicMock()
-    response.status_code = 200
-    response.json.return_value = {"response": "  An API lets programs talk.  "}
-    response.raise_for_status = MagicMock()
-
-    with patch("app.llm.ollama.httpx.Client", return_value=_mock_client(response)):
-        result = _provider().generate("Explain what an API is in one sentence.")
-
+def test_generate_streams_and_joins_text() -> None:
+    counts: list[int] = []
+    result = _provider(_ok_stream).generate("hi", on_tokens=counts.append)
     assert result == "An API lets programs talk."
-    response.raise_for_status.assert_called_once()
+    assert counts == [1, 2]
 
 
-def test_generate_uses_configured_model_not_a_hardcoded_name() -> None:
-    response = MagicMock()
-    response.json.return_value = {"response": "ok"}
-    response.raise_for_status = MagicMock()
-    client = MagicMock()
-    client.post.return_value = response
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_payload_has_model_schema_and_deterministic_options() -> None:
+    seen: dict = {}
 
-    provider = OllamaProvider(base_url="http://example.local:11434/", model="my-local-model")
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        return _ok_stream(request)
 
-    with patch("app.llm.ollama.httpx.Client", return_value=context):
-        provider.generate("hello")
+    provider = _provider(
+        handler,
+        base_url="http://example.local:11434/",
+        model="my-local-model",
+        num_ctx=8192,
+        temperature=0.0,
+        seed=7,
+        max_output_tokens=512,
+        keep_alive="10m",
+    )
+    provider.generate("hello", schema={"type": "object"})
 
-    url, kwargs = client.post.call_args
-    assert url[0] == "http://example.local:11434/api/generate"
-    assert kwargs["json"] == {
+    assert seen["url"] == "http://example.local:11434/api/generate"
+    assert seen["body"] == {
         "model": "my-local-model",
         "prompt": "hello",
-        "stream": False,
+        "stream": True,
         "think": False,
-        "options": {"num_ctx": 16384},
+        "keep_alive": "10m",
+        "format": {"type": "object"},
+        "options": {"num_ctx": 8192, "temperature": 0.0, "seed": 7, "num_predict": 512},
     }
 
 
-def test_generate_sends_configured_think_value() -> None:
-    response = MagicMock()
-    response.json.return_value = {"response": "ok"}
-    response.raise_for_status = MagicMock()
-    client = MagicMock()
-    client.post.return_value = response
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_think_flag_is_sent() -> None:
+    seen: dict = {}
 
-    provider = OllamaProvider(base_url=BASE_URL, model=MODEL, think=True)
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return _ok_stream(request)
 
-    with patch("app.llm.ollama.httpx.Client", return_value=context):
-        provider.generate("hello")
-
-    assert client.post.call_args.kwargs["json"]["think"] is True
+    _provider(handler, think=True).generate("x")
+    assert seen["think"] is True
 
 
-def test_default_think_is_false() -> None:
-    response = MagicMock()
-    response.json.return_value = {"response": "ok"}
-    response.raise_for_status = MagicMock()
-    client = MagicMock()
-    client.post.return_value = response
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_token_callback_can_abort() -> None:
+    class Stop(Exception):
+        pass
 
-    with patch("app.llm.ollama.httpx.Client", return_value=context) as client_cls:
-        _provider().generate("hello")
+    def stop(_count: int) -> None:
+        raise Stop()
 
-    assert client.post.call_args.kwargs["json"]["think"] is False
-    assert client_cls.call_args.kwargs["timeout"].read == 1200.0
-    assert client.post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384
+    with pytest.raises(Stop):
+        _provider(_ok_stream).generate("x", on_tokens=stop)
 
 
-def test_timeout_seconds_are_applied_to_httpx_client() -> None:
-    response = MagicMock()
-    response.json.return_value = {"response": "ok"}
-    response.raise_for_status = MagicMock()
-    client = MagicMock()
-    client.post.return_value = response
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_length_stop_raises_truncated_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=_stream({"response": "{", "done": False}, {"done": True, "done_reason": "length"}),
+        )
 
-    provider = OllamaProvider(base_url=BASE_URL, model=MODEL, timeout_seconds=120.0)
-
-    with patch("app.llm.ollama.httpx.Client", return_value=context) as client_cls:
-        provider.generate("hello")
-
-    timeout = client_cls.call_args.kwargs["timeout"]
-    assert timeout.read == 120.0
-    assert timeout.connect == 5.0
+    with pytest.raises(LLMOutputTruncatedError):
+        _provider(handler).generate("x")
 
 
-def test_unavailable_server_raises_llm_unavailable_error() -> None:
-    client = MagicMock()
-    client.post.side_effect = httpx.ConnectError("connection refused")
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_stream_error_chunk_raises_response_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_stream({"error": "model crashed"}))
 
-    with patch("app.llm.ollama.httpx.Client", return_value=context):
-        with pytest.raises(LLMUnavailableError, match="unavailable"):
-            _provider().generate("hello")
+    with pytest.raises(LLMResponseError, match="model crashed"):
+        _provider(handler).generate("x")
 
 
-def test_timeout_raises_llm_timeout_error() -> None:
-    client = MagicMock()
-    client.post.side_effect = httpx.ReadTimeout("timed out")
-    context = MagicMock()
-    context.__enter__.return_value = client
-    context.__exit__.return_value = False
+def test_stream_without_done_raises_response_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_stream({"response": "half", "done": False}))
 
-    with patch("app.llm.ollama.httpx.Client", return_value=context):
-        with pytest.raises(LLMTimeoutError, match="Timed out"):
-            _provider().generate("hello")
+    with pytest.raises(LLMResponseError):
+        _provider(handler).generate("x")
+
+
+def test_non_json_stream_raises_response_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>proxy</html>")
+
+    with pytest.raises(LLMResponseError):
+        _provider(handler).generate("x")
 
 
 def test_http_error_raises_llm_http_error() -> None:
-    request = httpx.Request("POST", f"{BASE_URL}/api/generate")
-    raw = httpx.Response(
-        404,
-        json={"error": "model 'configured-model' not found"},
-        request=request,
-    )
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "model 'x' not found"})
 
-    with patch("app.llm.ollama.httpx.Client", return_value=_mock_client(raw)):
-        with pytest.raises(LLMHTTPError, match="not found") as exc_info:
-            _provider().generate("hello")
-
-    assert exc_info.value.status_code == 404
+    with pytest.raises(LLMHTTPError) as caught:
+        _provider(handler).generate("x")
+    assert caught.value.status_code == 404
+    assert str(caught.value) == "model 'x' not found"
 
 
-def test_non_json_response_raises_llm_response_error() -> None:
-    response = MagicMock()
-    response.raise_for_status = MagicMock()
-    response.json.side_effect = ValueError("not json")
+def test_unreachable_server_raises_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
 
-    with patch("app.llm.ollama.httpx.Client", return_value=_mock_client(response)):
-        with pytest.raises(LLMResponseError, match="non-JSON"):
-            _provider().generate("hello")
+    with pytest.raises(LLMUnavailableError):
+        _provider(handler).generate("x")
 
 
-def test_missing_response_field_raises_llm_response_error() -> None:
-    response = MagicMock()
-    response.raise_for_status = MagicMock()
-    response.json.return_value = {"done": True}
+def test_timeout_raises_llm_timeout_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
 
-    with patch("app.llm.ollama.httpx.Client", return_value=_mock_client(response)):
-        with pytest.raises(LLMResponseError, match="generated text"):
-            _provider().generate("hello")
+    with pytest.raises(LLMTimeoutError):
+        _provider(handler).generate("x")
 
 
-def test_list_payload_raises_llm_response_error() -> None:
-    response = MagicMock()
-    response.raise_for_status = MagicMock()
-    response.json.return_value = ["not", "an", "object"]
+def _tags(*names: str) -> Callable[[httpx.Request], httpx.Response]:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/tags"
+        return httpx.Response(200, json={"models": [{"name": n} for n in names]})
 
-    with patch("app.llm.ollama.httpx.Client", return_value=_mock_client(response)):
-        with pytest.raises(LLMResponseError, match="unexpected JSON"):
-            _provider().generate("hello")
+    return handler
+
+
+def test_check_ready_passes_when_model_installed() -> None:
+    _provider(_tags("configured-model", "other:1b")).check_ready()
+    _provider(_tags("llama3:latest"), model="llama3").check_ready()
+
+
+def test_check_ready_names_the_missing_model() -> None:
+    with pytest.raises(LLMUnavailableError, match="ollama pull qwen3:8b"):
+        _provider(_tags("qwen3:4b"), model="qwen3:8b").check_ready()
+
+
+def test_check_ready_reports_unreachable_server() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    with pytest.raises(LLMUnavailableError, match="not reachable"):
+        _provider(handler).check_ready()

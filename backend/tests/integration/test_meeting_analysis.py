@@ -19,9 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from app.analysis import MeetingAnalyzer
 from app.config import Settings
-from app.llm.ollama import OllamaProvider
+from app.dependencies import build_analyzer, build_provider
 from tests.fixtures.payment_meeting import PAYMENT_MEETING_TRANSCRIPT
 from tests.fixtures.payment_platform_redesign import PAYMENT_PLATFORM_REDESIGN_TRANSCRIPT
 
@@ -40,15 +39,7 @@ _OUTPUT_PATH = (
 
 def test_payment_meeting_analysis_against_local_ollama() -> None:
     settings = Settings()
-    analyzer = MeetingAnalyzer(
-            OllamaProvider(
-                base_url=settings.ollama_base_url,
-                model=settings.ollama_model,
-                think=settings.ollama_think,
-                timeout_seconds=settings.ollama_timeout_seconds,
-                num_ctx=settings.ollama_num_ctx,
-            )
-    )
+    analyzer = build_analyzer(build_provider(settings), settings)
 
     analysis = analyzer.analyze(PAYMENT_MEETING_TRANSCRIPT)
 
@@ -79,15 +70,7 @@ _REDESIGN_OUTPUT_PATH = (
 
 def test_payment_platform_redesign_analysis_against_local_ollama() -> None:
     settings = Settings()
-    analyzer = MeetingAnalyzer(
-        OllamaProvider(
-            base_url=settings.ollama_base_url,
-            model=settings.ollama_model,
-            think=settings.ollama_think,
-            timeout_seconds=settings.ollama_timeout_seconds,
-            num_ctx=settings.ollama_num_ctx,
-        )
-    )
+    analyzer = build_analyzer(build_provider(settings), settings)
 
     assert "Meeting: Payment Platform Redesign" in PAYMENT_PLATFORM_REDESIGN_TRANSCRIPT
     assert "We need to lock the card-not-present path today." not in PAYMENT_PLATFORM_REDESIGN_TRANSCRIPT

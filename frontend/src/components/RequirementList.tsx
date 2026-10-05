@@ -29,7 +29,7 @@ export function RequirementList({ items }: { items: Requirement[] }) {
                     ...resolveTraceLinks(item.related_risk_ids, traceIndex),
                   ]}
                 />
-                <Evidence excerpts={[item.source_reference.excerpt]} />
+                <Evidence refs={[item.source_reference]} />
               </article>
             </li>
           ))}

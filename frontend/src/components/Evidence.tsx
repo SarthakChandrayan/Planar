@@ -1,40 +1,58 @@
 import { useState } from 'react'
+import type { SourceReference } from '../types/analysis'
 
 interface EvidenceProps {
-  excerpts: string[]
+  refs: SourceReference[]
 }
 
-export function Evidence({ excerpts }: EvidenceProps) {
-  const quotes = excerpts.map((item) => item.trim()).filter(Boolean)
-  if (quotes.length === 0) {
+export function Evidence({ refs }: EvidenceProps) {
+  const sources = refs.filter((ref) => ref.excerpt.trim())
+  if (sources.length === 0) {
     return null
   }
 
   return (
     <div className="evidence-stack">
-      {quotes.map((excerpt, index) => (
+      {sources.map((ref, index) => (
         <EvidenceQuote
-          key={`${index}-${excerpt.slice(0, 24)}`}
-          excerpt={excerpt}
+          key={`${index}-${ref.line_start ?? ''}-${ref.excerpt.slice(0, 24)}`}
+          source={ref}
           index={index}
-          total={quotes.length}
+          total={sources.length}
         />
       ))}
     </div>
   )
 }
 
+function locationLabel(ref: SourceReference): string | null {
+  const parts: string[] = []
+  if (ref.line_start != null) {
+    parts.push(
+      ref.line_end != null && ref.line_end !== ref.line_start
+        ? `L${ref.line_start}–${ref.line_end}`
+        : `L${ref.line_start}`,
+    )
+  }
+  if (ref.speaker) {
+    parts.push(ref.speaker)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 function EvidenceQuote({
-  excerpt,
+  source,
   index,
   total,
 }: {
-  excerpt: string
+  source: SourceReference
   index: number
   total: number
 }) {
   const [copied, setCopied] = useState(false)
-  const label = total > 1 ? `Source ${index + 1}` : 'Source'
+  const base = total > 1 ? `Source ${index + 1}` : 'Source'
+  const location = locationLabel(source)
+  const excerpt = source.excerpt.trim()
 
   async function copy() {
     try {
@@ -48,7 +66,10 @@ function EvidenceQuote({
 
   return (
     <details className="evidence">
-      <summary>{label}</summary>
+      <summary>
+        {base}
+        {location ? <span className="evidence-location"> · {location}</span> : null}
+      </summary>
       <div className="evidence-panel">
         <blockquote className="evidence-quote">{excerpt}</blockquote>
         <div className="evidence-actions">

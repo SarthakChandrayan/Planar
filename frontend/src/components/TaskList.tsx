@@ -27,7 +27,23 @@ export function TaskList({ items }: { items: Task[] }) {
                   badgeKind="priority"
                 />
                 <h4 className="card-title">{item.title}</h4>
-                <p className="artifact-body">{item.description}</p>
+                {item.owner || item.due ? (
+                  <p className="task-assignment">
+                    {item.owner ? (
+                      <span>
+                        <span className="field-caption">Owner</span> {item.owner}
+                      </span>
+                    ) : null}
+                    {item.due ? (
+                      <span>
+                        <span className="field-caption">Due</span> {item.due}
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
+                {item.description && item.description !== item.title ? (
+                  <p className="artifact-body">{item.description}</p>
+                ) : null}
                 {item.acceptance_criteria.length > 0 ? (
                   <div>
                     <p className="field-caption">Done when</p>
@@ -41,9 +57,7 @@ export function TaskList({ items }: { items: Task[] }) {
                 <Traceability
                   links={resolveTraceLinks(item.related_requirement_ids, traceIndex)}
                 />
-                <Evidence
-                  excerpts={item.source_references.map((ref) => ref.excerpt)}
-                />
+                <Evidence refs={item.source_references} />
               </article>
             </li>
           ))}

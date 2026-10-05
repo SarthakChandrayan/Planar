@@ -12,7 +12,7 @@ def test_default_ollama_settings(monkeypatch) -> None:
     settings = Settings(_env_file=None)
 
     assert settings.ollama_base_url == "http://localhost:11434"
-    assert settings.ollama_model == "qwen3:8b"
+    assert settings.ollama_model == "qwen3:4b"
     assert settings.ollama_think is False
     assert settings.ollama_timeout_seconds == 1200.0
     assert settings.ollama_num_ctx == 16384
@@ -32,3 +32,15 @@ def test_settings_read_environment_variables(monkeypatch) -> None:
     assert settings.ollama_think is True
     assert settings.ollama_timeout_seconds == 120.0
     assert settings.ollama_num_ctx == 8192
+
+
+def test_list_and_case_settings_parse(monkeypatch) -> None:
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://a.test, http://b.test")
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.cors_allow_origins == ["http://a.test", "http://b.test"]
+    assert settings.log_level == "DEBUG"
+    assert settings.enable_dev_endpoints is False
+    assert settings.llm_temperature == 0.0

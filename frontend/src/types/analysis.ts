@@ -3,6 +3,9 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical'
 
 export interface SourceReference {
   excerpt: string
+  line_start?: number | null
+  line_end?: number | null
+  speaker?: string | null
 }
 
 export interface Decision {
@@ -26,6 +29,8 @@ export interface Task {
   title: string
   description: string
   priority: Priority
+  owner?: string | null
+  due?: string | null
   acceptance_criteria: string[]
   source_references: SourceReference[]
   related_requirement_ids?: string[]

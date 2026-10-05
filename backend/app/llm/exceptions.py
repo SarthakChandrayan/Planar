@@ -3,7 +3,7 @@ class LLMProviderError(Exception):
 
 
 class LLMUnavailableError(LLMProviderError):
-    """Raised when the LLM server cannot be reached."""
+    """Raised when the LLM server cannot be reached or the model is missing."""
 
 
 class LLMTimeoutError(LLMProviderError):
@@ -20,3 +20,7 @@ class LLMHTTPError(LLMProviderError):
 
 class LLMResponseError(LLMProviderError):
     """Raised when the LLM server returns a malformed or unexpected payload."""
+
+
+class LLMOutputTruncatedError(LLMResponseError):
+    """Raised when generation stopped at the output token limit."""

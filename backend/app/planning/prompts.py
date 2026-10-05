@@ -1,68 +1,62 @@
-import json
-
 from app.domain.models import MeetingAnalysis
 
 IMPLEMENTATION_PLAN_INSTRUCTIONS = """
-You turn a validated engineering record into an implementation plan.
+TASK: Turn the engineering record above into an implementation plan.
 
-Return ONE JSON object. No markdown. No commentary. No IDs.
-The application assigns plan and step IDs.
+- "title": short name for the plan.
+- "summary": 2-3 sentences on what will be built and the key constraints.
+- "steps": ordered implementation steps (what to build first goes first).
+  Each step has a short "title", a "description" of what to build, and the
+  "requirement_ids" and "task_ids" (from the record) it delivers.
+  Every step must cite at least one requirement or task ID.
+- "acceptance_criteria": up to 6 measurable "done when" conditions for the
+  whole plan, based on the record.
 
-The JSON must use exactly these keys:
-{
-  "title": "",
-  "summary": "",
-  "steps": [],
-  "acceptance_criteria": []
-}
-
-Do not include id fields. Do not include risks or open_questions; the
-application copies those from the engineering record.
-
-GOAL
-Organize the supplied engineering record into concrete implementation
-steps. Elaborate work that is already decided or required. Do not invent
-architecture, products, or requirements that are not in the record.
-
-CONSTRAINTS
-- Decisions in the record are constraints. Honor them. Do not contradict them.
-- Requirements become implementation needs.
-- Tasks become known/assigned work. Preserve that work; do not drop it
-  merely because you grouped other steps.
-- Do not present an idea as an established decision if it is not in the record.
-- If the record says Postgres is the source of truth, you may say
-  "Persist idempotency records in Postgres."
-- You must NOT invent alternatives such as Redis, Kafka, extra caches,
-  new services, or other stack choices that the record did not accept.
-
-TRACEABILITY
-Each step must use:
-- "title": short implementation action
-- "description": what to build, constrained by the record
-- "related_requirement_ids": IDs copied from the record (for example REQ-001)
-- "related_task_ids": IDs copied from the record (for example TSK-001)
-- "evidence": [{ "excerpt": "..." }] copied verbatim from the record's
-  source_reference / source_references excerpts
-
-Only cite IDs that appear in the engineering record.
-Only copy evidence excerpts that already exist in the record.
-A step may relate to multiple requirements and tasks.
-If the record has no requirements or tasks, return an empty steps array
-rather than inventing work.
-
-ACCEPTANCE CRITERIA
-List measurable done-when conditions grounded in the record. Prefer
-criteria already stated on tasks.
-
-STEP SHAPE
-{ "title": "...", "description": "...", "related_requirement_ids": ["REQ-001"],
-  "related_task_ids": ["TSK-001"], "evidence": [{ "excerpt": "..." }] }
+RULES
+- Decisions are constraints: honor them, never contradict them.
+- Only cite IDs that appear in the record.
+- Do not invent technologies, services, or requirements the record does not mention.
+- Return compact JSON on a single line, with no indentation.
 """.strip()
 
 
-def build_implementation_plan_prompt(analysis: MeetingAnalysis) -> str:
-    record = json.dumps(analysis.model_dump(mode="json"), indent=2)
-    return (
-        f"{IMPLEMENTATION_PLAN_INSTRUCTIONS}\n\n"
-        f"ENGINEERING RECORD JSON:\n{record}"
+def render_record(analysis: MeetingAnalysis) -> str:
+    """Compact text form of the record: far fewer tokens than a JSON dump."""
+    sections: list[str] = ["ENGINEERING RECORD"]
+
+    def add(heading: str, rows: list[str]) -> None:
+        if rows:
+            sections.append(f"{heading}:\n" + "\n".join(rows))
+
+    add(
+        "DECISIONS (constraints)",
+        [f"{d.id}: {d.statement}" for d in analysis.decisions],
     )
+    add(
+        "REQUIREMENTS",
+        [f"{r.id}: {r.statement}" for r in analysis.requirements],
+    )
+    task_rows = []
+    for t in analysis.tasks:
+        extras = [f"priority {t.priority.value}"]
+        if t.owner:
+            extras.append(f"owner {t.owner}")
+        if t.due:
+            extras.append(f"due {t.due}")
+        if t.related_requirement_ids:
+            extras.append("for " + ", ".join(t.related_requirement_ids))
+        task_rows.append(f"{t.id}: {t.title} — {t.description} ({'; '.join(extras)})")
+    add("TASKS", task_rows)
+    add(
+        "RISKS",
+        [f"{r.id} [{r.severity.value}]: {r.description}" for r in analysis.risks],
+    )
+    add(
+        "OPEN QUESTIONS",
+        [f"{q.id}: {q.question}" for q in analysis.open_questions],
+    )
+    return "\n\n".join(sections)
+
+
+def build_implementation_plan_prompt(analysis: MeetingAnalysis) -> str:
+    return f"{render_record(analysis)}\n\n{IMPLEMENTATION_PLAN_INSTRUCTIONS}"

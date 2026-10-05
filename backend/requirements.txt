@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-pydantic
-pydantic-settings
-pytest
-httpx
+# Runtime dependencies (pinned to tested versions).
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
+httpx==0.28.1

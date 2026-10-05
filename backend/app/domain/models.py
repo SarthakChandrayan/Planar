@@ -52,6 +52,9 @@ def _known_relationship_ids(ids: list[str], allowed: set[str], *, field: str) ->
 
 class SourceReference(DomainModel):
     excerpt: NonEmptyString
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
+    speaker: str | None = None
 
 
 class Decision(DomainModel):
@@ -82,6 +85,8 @@ class Task(DomainModel):
     title: NonEmptyString
     description: NonEmptyString
     priority: Priority
+    owner: str | None = None
+    due: str | None = None
     acceptance_criteria: list[NonEmptyString] = Field(default_factory=list)
     source_references: list[SourceReference] = Field(default_factory=list)
     related_requirement_ids: list[RequirementId] = Field(default_factory=list)

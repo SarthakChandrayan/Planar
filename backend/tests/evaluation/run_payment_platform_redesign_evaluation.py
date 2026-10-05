@@ -35,10 +35,10 @@ def load_analysis(path: Path) -> MeetingAnalysis:
     return MeetingAnalysis.model_validate(payload)
 
 
-def render_report(result: EvaluationResult) -> str:
+def render_report(result: EvaluationResult, source: object = _RESULT_JSON) -> str:
     lines = [
         "Payment Platform Redesign evaluation",
-        f"Source: {_RESULT_JSON}",
+        f"Source: {source}",
         "",
         f"Overall score: {result.overall_score:.4f}",
         f"Match rate:    {result.match_rate:.4f}  "
