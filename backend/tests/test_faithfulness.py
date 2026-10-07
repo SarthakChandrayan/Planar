@@ -310,3 +310,16 @@ def test_eventually_consistent_is_not_a_time_qualifier() -> None:
     claim = "Payment authorization timeout could result in a false payment failure."
     evidence = "The payment provider itself is eventually consistent. The API timeout doesn't mean payment failed."
     assert restore_qualifiers(claim, evidence) == claim
+
+
+
+def test_sentence_without_a_modal_does_not_decide_strength() -> None:
+    from app.analysis.grounding import restore_modality
+
+    evidence = (
+        '"Should" again depends on the exact transaction boundary. If the idempotency record and '
+        "payment state aren't committed atomically, there can still be a race."
+    )
+    assert restore_modality("The payment state must be updated atomically with the idempotency key.", evidence) == (
+        "The payment state should be updated atomically with the idempotency key."
+    )

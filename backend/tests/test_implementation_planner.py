@@ -332,4 +332,7 @@ def test_summary_sentence_with_a_term_the_meeting_never_used_is_dropped() -> Non
         "This plan implements a migration to Kafka-based event sourcing. "
         "It introduces Kafka for transaction events."
     )
-    assert _grounded_summary(summary, record) == "It introduces Kafka for transaction events."
+    assert _grounded_summary(summary, record) == ""
+    assert _grounded_summary("It introduces Kafka for transaction events.", record) == (
+        "It introduces Kafka for transaction events."
+    )

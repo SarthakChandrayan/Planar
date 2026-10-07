@@ -376,7 +376,13 @@ def _closest_sentence(claim: str, evidence: str) -> str:
     sentences = [s for s in re.split(r"(?<=[.!?;])\s+|\s+…\s+", evidence) if s.strip()]
     if len(sentences) < 2:
         return evidence
-    return max(sentences, key=lambda s: coverage(claim, s))
+    closest = max(sentences, key=lambda s: coverage(claim, s))
+    lowered = closest.lower()
+    has_modal = _SHOULD.search(closest) or set(re.findall(r"[a-z']+", lowered)) & _FIRM or any(
+        phrase in lowered for phrase in _FIRM_PHRASES
+    )
+    # A sentence with no modal verb says nothing about strength: judge the whole.
+    return closest if has_modal else evidence
 
 
 def _keep_never(claim: str, evidence: str) -> str:

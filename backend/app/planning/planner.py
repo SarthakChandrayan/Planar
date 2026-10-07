@@ -60,6 +60,8 @@ _COMMON_WORD_SHARE = 0.3
 _LINK_OWNER_SHARE = 0.5
 # A forgotten task this close to an existing step belongs to that step.
 _TASK_STEP_MATCH = 0.6
+# A step that cites no task of its own is usually the task the model forgot.
+_TASKLESS_STEP_MATCH = 0.5
 # A requirement no step cites goes to the step whose words it shares, but only
 # when that step clearly wins; otherwise it is reported as not linked.
 _PLACE_MIN_WORDS = 2
@@ -316,7 +318,8 @@ def _matching_step(task: Task, drafts: list[_StepDraft]) -> _StepDraft | None:
             coverage(draft.title, task.title),
             coverage(task.title, f"{draft.title} {draft.description}"),
         )
-        if score >= _TASK_STEP_MATCH and (best is None or score > best[0]):
+        needed = _TASKLESS_STEP_MATCH if not draft.task_ids else _TASK_STEP_MATCH
+        if score >= needed and (best is None or score > best[0]):
             best = (score, draft)
     return best[1] if best else None
 
@@ -504,14 +507,14 @@ def _grounded_summary(summary: str, record_text: str) -> str:
     raised compliance invents a concern.
     """
     known = word_set(record_text) | _SUMMARY_FILLER
-    kept = []
     for sentence in re.split(r"(?<=[.!?])\s+", summary.strip()):
         novel = word_set(sentence) - known
         if novel:
-            logger.info("implementation_plan_summary_sentence_dropped new_terms=%s", ",".join(sorted(novel)))
-            continue
-        kept.append(sentence)
-    return " ".join(kept).strip()
+            # What is left after cutting a sentence out ("It ensures ...")
+            # rarely reads as a summary; use the plain one instead.
+            logger.info("implementation_plan_summary_dropped new_terms=%s", ",".join(sorted(novel)))
+            return ""
+    return summary.strip()
 
 
 def _record_text(analysis: MeetingAnalysis) -> str:
