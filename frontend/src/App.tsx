@@ -10,6 +10,7 @@ import {
   listRuns,
   listSamples,
   startRun,
+  warmUp,
 } from './api/runs'
 import { Composer, MIN_TRANSCRIPT_CHARS } from './components/Composer'
 import { Header } from './components/Header'
@@ -196,6 +197,14 @@ function App() {
       window.clearTimeout(timer)
     }
   }, [transcriptChars, longEnough])
+
+  // A transcript is in the box: start loading the model now, not when Analyze
+  // is clicked. The backend ignores repeats within a few minutes.
+  useEffect(() => {
+    if (longEnough) {
+      warmUp()
+    }
+  }, [longEnough])
 
   async function handleAnalyze() {
     const cleaned = transcript.trim()

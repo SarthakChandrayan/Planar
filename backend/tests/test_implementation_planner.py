@@ -212,3 +212,71 @@ def test_blanket_citation_is_kept_only_where_the_step_relates() -> None:
     assert cited[0] == ["REQ-001"]  # shares "idempotency", "charges", ...
     assert cited[1] == [] and cited[2] == []  # unrelated: blanket link removed
     assert cited[3] == ["REQ-001"]  # its only reference, so the step is kept
+
+
+def _plan_with(steps=None, outcomes=None):
+    answer = dict(PLAN)
+    if steps is not None:
+        answer["steps"] = steps
+    answer["outcomes"] = outcomes or []
+    return ImplementationPlanner(ScriptedLLM({"plan": answer})).plan(_analysis())
+
+
+STEP = {"title": "Build idempotency middleware", "description": "d",
+        "decision_ids": ["DEC-001"], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-001"]}
+
+
+def test_step_when_is_kept_only_if_its_dates_are_in_the_record() -> None:
+    analysis = _analysis()
+    analysis.tasks[0].due = "Friday"
+    plan = ImplementationPlanner(
+        ScriptedLLM({"plan": dict(PLAN, outcomes=[], steps=[
+            dict(STEP, when="By Friday"),
+            dict(STEP, title="Second", when="Before October 28", task_ids=[]),
+            dict(STEP, title="Third", when="N/A", task_ids=[]),
+        ])})
+    ).plan(analysis)
+    assert plan.steps[0].when == "By Friday"  # "Friday" is in the record
+    assert plan.steps[1].when is None  # "October 28" is invented
+    assert plan.steps[2].when is None
+    # A task the model left out becomes a step timed by its own due date.
+    assert plan.steps[-1].related_task_ids == ["TSK-002"]
+
+
+def test_outcomes_are_checked_against_the_items_they_cite() -> None:
+    plan = _plan_with(
+        steps=[STEP],
+        outcomes=[
+            {"text": "Repeated charge requests honor the Idempotency-Key header", "ids": ["REQ-001"]},
+            {"text": "Postgres unique constraint handles 10,000 keys per second", "ids": ["DEC-001"]},
+            {"text": "Something unrelated", "ids": ["DEC-404"]},
+        ],
+    )
+    assert plan.acceptance_criteria == [
+        "Repeated charge requests honor the Idempotency-Key header",
+        # Invented number: replaced by the decision's own words.
+        "Use the existing Postgres unique constraint for idempotency keys.",
+    ]
+
+
+def test_without_outcomes_the_plan_is_done_when_its_decisions_hold() -> None:
+    plan = _plan_with(steps=[STEP], outcomes=[])
+    assert plan.acceptance_criteria == [
+        "Use the existing Postgres unique constraint for idempotency keys."
+    ]
+
+
+def test_unrelated_links_are_dropped_and_related_ones_kept() -> None:
+    steps = [
+        # Related: shares "idempotency" / "charges" with REQ-001 and DEC-001's "Postgres... keys".
+        {"title": "Idempotency middleware", "description": "", "decision_ids": [],
+         "requirement_ids": ["REQ-001"], "task_ids": ["TSK-001"]},
+        # Unrelated: docs task citing the idempotency requirement and the Postgres decision,
+        # with a description written to sound related.
+        {"title": "Write decline code docs", "description": "Document idempotency keys in Postgres",
+         "decision_ids": ["DEC-001"], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-002"]},
+    ]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps, outcomes=[])})).plan(_analysis())
+    assert plan.steps[0].related_requirement_ids == ["REQ-001"]
+    assert plan.steps[1].related_requirement_ids == []
+    assert plan.steps[1].related_decision_ids == []

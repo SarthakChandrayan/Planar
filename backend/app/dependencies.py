@@ -58,6 +58,7 @@ def build_runner(settings: Settings) -> Runner:
         outcome = analyzer.run(job.transcript, context, extra_stages=extra)
         for warning in outcome.warnings:
             context.warn(warning)
+        context.record_dropped(outcome.dropped)
         if not job.include_plan:
             return outcome.analysis, None
 

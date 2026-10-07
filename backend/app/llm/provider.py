@@ -26,3 +26,7 @@ class LLMProvider(ABC):
     def check_ready(self) -> None:
         """Raise an LLMProviderError if the model cannot serve requests."""
         return None
+
+    def warm_up(self) -> None:
+        """Load the model into memory ahead of a request. Best effort."""
+        return None

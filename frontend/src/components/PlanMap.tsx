@@ -185,7 +185,7 @@ function NodeContent({ node }: { node: MapNode }) {
         <span className="node-num">{node.label}</span>
         <span className="node-main">
           <span className="node-title">{node.title}</span>
-          {node.owners?.length || node.due?.length ? (
+          {node.owners?.length || node.when || node.due?.length ? (
             <span className="node-tags">
               {node.owners?.map((owner) => (
                 <span
@@ -197,10 +197,10 @@ function NodeContent({ node }: { node: MapNode }) {
                   {initials(owner)}
                 </span>
               ))}
-              {node.due?.length ? (
+              {node.when || node.due?.length ? (
                 <span className="node-due">
                   <CalendarIcon size={11} />
-                  {node.due[0]}
+                  {node.when ?? node.due?.[0]}
                 </span>
               ) : null}
             </span>

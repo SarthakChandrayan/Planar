@@ -199,6 +199,8 @@ class ImplementationPlanStep(DomainModel):
     related_requirement_ids: list[RequirementId] = Field(default_factory=list)
     related_task_ids: list[TaskId] = Field(default_factory=list)
     evidence: list[SourceReference] = Field(min_length=1)
+    # When the step happens, in the record's own terms ("before October 28").
+    when: str | None = None
 
     @field_validator("related_decision_ids", "related_requirement_ids", "related_task_ids")
     @classmethod

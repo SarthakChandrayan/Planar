@@ -40,3 +40,23 @@ def test_not_ready_explains_why() -> None:
     assert response.status_code == 503
     assert response.json()["status"] == "unavailable"
     assert "not installed" in response.json()["detail"]
+
+
+def test_warmup_endpoint_starts_once_per_interval(monkeypatch) -> None:
+    import app.main as main_module
+
+    calls: list[int] = []
+
+    class Warm(ScriptedLLM):
+        def warm_up(self) -> None:
+            calls.append(1)
+
+    monkeypatch.setattr(main_module, "_last_warm_up", 0.0)
+    app.dependency_overrides[get_llm_provider] = lambda: Warm()
+    first = client.post("/api/warmup").json()
+    second = client.post("/api/warmup").json()
+    import time
+
+    time.sleep(0.2)
+    assert first == {"started": True} and second == {"started": False}
+    assert calls == [1]

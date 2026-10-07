@@ -22,9 +22,11 @@ RULES
   component directly ("The webhook handler must ..."), not "The system must ...".
 - Options the meeting rejected appear only as "do not ..." decisions. Never
   mention them in requirements, tasks, or risks.
-- Keep qualifiers exactly as said: "approximately 50" stays "approximately
-  50", "could" stays "could". Never turn an estimate, suggestion, option or
-  concern into a "must".
+- Keep qualifiers and modal verbs exactly as said: "approximately 50" stays
+  "approximately 50"; "should" stays "should", "could" stays "could". Never
+  turn an estimate, suggestion, option or concern into a "must".
+- A question is not a statement: "asked whether X" does not mean X is true or
+  false. Never claim something is or is not in place unless someone said so.
 - If there are none, return an empty list.
 - Output compact JSON on ONE line, exactly like the example. No line breaks,
   no indentation.
@@ -49,9 +51,15 @@ A requirement is a condition the result MUST satisfy.
 - Product, launch or business: rules, limits, eligibility, approvals, targets
   and things that must be in place ("the discount is only for existing
   customers", "targets must be set before launch").
+Look through the WHOLE discussion, not just a final decisions list or recap:
+requirements usually come up where people discuss conditions, limits,
+eligibility, approvals and what has to exist.
 Capture the detail a decision leaves out: who it applies to, limits, conditions.
 State what must be true AFTER the work. Problems, current behaviour and
 proposals that were not agreed are not requirements.
+Rules that gate or limit the work ARE requirements: "no X until Y", "X
+requires approval from Z", "must be defined before implementation", "X should
+not be retried".
 NOT requirements: a decision restated (choosing an option, price, vendor, date
 or scope is a decision) and work assignments (those are tasks).
 EXAMPLE: {"requirements":[{"statement":"The sync API must accept per-field timestamps.","lines":[30]}]}
@@ -70,7 +78,7 @@ A task is concrete work someone was asked to do or volunteered for
   work is tied to ("for the October 28 review"), or "".
 - "priority": "high" only if the meeting tied the task to an urgent deadline
   or a launch gate, or called it critical; "low" if optional; else "medium".
-- "acceptance_criteria": up to 2 specific, checkable results of the work, using
+- "acceptance_criteria": 1 or 2 specific, checkable results of the work, using
   names, numbers and dates from the meeting. Do not restate the title.
 EXAMPLE: {"tasks":[{"title":"Prototype the draft store","description":"Prototype the SQLite draft store with crash-safe writes and share the results with Chen","owner":"Ben","due":"Friday","priority":"high","acceptance_criteria":["Drafts survive the app being killed mid-save"],"lines":[41]}]}
 """.strip()
@@ -84,6 +92,8 @@ security or compliance exposure. Look for warnings and concerns: "could",
 "hard to reverse", "if ... then ...". Include risks the meeting decided to
 accept or mitigate, and say what could happen.
 "severity": low, medium, high or critical, from how seriously it was treated.
+Only consequences someone actually mentioned; do not add your own ("could lead
+to data loss"). Something still to be decided is an OPEN QUESTION, not a risk.
 An open question is something explicitly left unresolved: to be decided later,
 or to be answered by someone not present. Questions answered during the
 meeting are NOT open questions.

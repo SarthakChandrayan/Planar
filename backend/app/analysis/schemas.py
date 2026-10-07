@@ -143,9 +143,12 @@ TASKS_SCHEMA = _object(
             "owner": _STRING,
             "due": _STRING,
             "priority": {"type": "string", "enum": _PRIORITIES},
+            # minItems: every task gets a checkable "done when"; on some runs
+            # the model otherwise returns an empty list for all of them.
             "acceptance_criteria": {
                 "type": "array",
                 "items": _STRING,
+                "minItems": 1,
                 "maxItems": 3,
             },
             "lines": _LINES,

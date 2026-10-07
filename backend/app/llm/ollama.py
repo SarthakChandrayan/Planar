@@ -19,6 +19,8 @@ _CONNECT_TIMEOUT_SECONDS = 5.0
 _WRITE_TIMEOUT_SECONDS = 30.0
 _POOL_TIMEOUT_SECONDS = 5.0
 _READY_TIMEOUT_SECONDS = 5.0
+# Loading an 8B model from a slow disk can take a minute or more.
+_WARM_UP_TIMEOUT_SECONDS = 300.0
 DEFAULT_TIMEOUT_SECONDS = 1200.0
 DEFAULT_NUM_CTX = 16384
 _NANOS = 1_000_000_000
@@ -147,6 +149,22 @@ class OllamaProvider(LLMProvider):
                 "The model hit the output token limit before finishing."
             )
         return "".join(parts).strip()
+
+    def warm_up(self) -> None:
+        """Ask Ollama to load the model now (a request with no prompt does only that)."""
+        payload: dict[str, Any] = {"model": self._model}
+        if self._keep_alive:
+            payload["keep_alive"] = self._keep_alive
+        try:
+            with self._client(_WARM_UP_TIMEOUT_SECONDS) as client:
+                response = client.post(f"{self._base_url}/api/generate", json=payload)
+        except httpx.HTTPError as exc:
+            raise LLMUnavailableError(
+                f"Ollama is not reachable at {self._base_url}."
+            ) from exc
+        if response.status_code >= 400:
+            raise LLMHTTPError(_http_error_message(response), status_code=response.status_code)
+        logger.info("llm_warm_up model=%s", self._model)
 
     def check_ready(self) -> None:
         try:

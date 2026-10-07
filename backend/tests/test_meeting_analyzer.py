@@ -410,3 +410,29 @@ def test_estimate_does_not_become_an_obligation() -> None:
         "The customer-success team could support approximately 50 new premium accounts.",
         "The sync API must accept per-field timestamps.",
     ]
+
+
+def test_requirement_mostly_made_of_one_decision_is_dropped_wherever_cited() -> None:
+    llm = ScriptedLLM(
+        {
+            "decisions": DECISIONS,
+            "requirements": {
+                "requirements": [
+                    # Restates DEC-002 from a discussion line, not the decisions list.
+                    {"statement": "The settlement cut-off must stay at 22:00 UTC.", "lines": [6]},
+                    {"statement": "POST /v1/charges must honor an Idempotency-Key header.", "lines": [7]},
+                ]
+            },
+        }
+    )
+    analysis = MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert [r.statement for r in analysis.requirements] == [
+        "POST /v1/charges must honor an Idempotency-Key header."
+    ]
+
+
+def test_task_schema_requires_a_done_when() -> None:
+    from app.analysis.schemas import TASKS_SCHEMA
+
+    criteria = TASKS_SCHEMA["properties"]["tasks"]["items"]["properties"]["acceptance_criteria"]
+    assert criteria["minItems"] == 1

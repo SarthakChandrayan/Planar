@@ -21,6 +21,7 @@ export interface MapNode {
   riskCount?: number
   owners?: string[]
   due?: string[]
+  when?: string | null
   stepCount?: number
 }
 
@@ -83,6 +84,7 @@ export function buildPlanGraph(analysis: MeetingAnalysis, plan: ImplementationPl
       title: step.title,
       owners: owners.filter((o) => o !== UNASSIGNED),
       due: stepTasks.map((t) => t.due?.trim()).filter((d): d is string => Boolean(d)),
+      when: step.when ?? null,
     }
   })
 

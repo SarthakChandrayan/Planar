@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
-from app.analysis.grounding import shared_words, similarity
+from app.analysis.grounding import adds_facts, coverage, shared_words, similarity, word_set
 from app.analysis.parsing import parse_json_object
 from app.domain import (
     DEC_PREFIX,
@@ -26,6 +26,7 @@ from app.planning.prompts import build_implementation_plan_prompt
 from app.planning.schemas import (
     PLAN_SCHEMA,
     ExtractedImplementationPlan,
+    ExtractedOutcome,
     ExtractedPlanStep,
 )
 from app.progress import NullProgress, Progress
@@ -38,12 +39,20 @@ _EMPTY_SUMMARY = (
 )
 _MAX_EVIDENCE_PER_STEP = 3
 _MAX_CRITERIA = 20
+_MAX_OUTCOMES = 8
+_MAX_WHEN_CHARS = 48
+# An outcome may rephrase the items it cites, but must stay about them.
+_OUTCOME_MIN_COVERAGE = 0.4
+_EMPTY_WHEN = frozenset({"", "n/a", "na", "none", "tbd", "unknown", "-", "not specified"})
 _DUPLICATE_CRITERION_SIMILARITY = 0.6
 # An ID cited on at least this many steps, and on more than this share of
 # them, is a blanket citation: kept only where the step shares its wording.
 _BLANKET_MIN_STEPS = 3
 _BLANKET_SHARE = 0.6
 _BLANKET_MIN_SHARED_WORDS = 2
+# A word in more than this share of the record's items says nothing about a
+# particular link ("transaction" in a transactions meeting).
+_COMMON_WORD_SHARE = 0.3
 
 
 @dataclass
@@ -53,6 +62,7 @@ class _StepDraft:
     decision_ids: list[str] = field(default_factory=list)
     requirement_ids: list[str] = field(default_factory=list)
     task_ids: list[str] = field(default_factory=list)
+    when: str | None = None
 
 
 class ImplementationPlanner:
@@ -63,9 +73,10 @@ class ImplementationPlanner:
     from the cited items, so a plan step is always traceable to transcript
     lines. Tasks the model leaves out are appended as their own steps.
 
-    The plan's "done when" list is not written by the model: it is the tasks'
-    own criteria, which come from the action items. Free-written plan targets
-    were the one unchecked output, and small models invented numbers there.
+    Model-written text that states facts is checked against the record: a
+    step's "when" and the plan's outcomes may not contain a number or date the
+    record lacks. A failing outcome falls back to the cited decision's own
+    words; a failing "when" is dropped.
     """
 
     def __init__(self, llm: LLMProvider) -> None:
@@ -124,15 +135,17 @@ def _to_domain(
     requirements = {item.id: item for item in analysis.requirements}
     tasks = {item.id: item for item in analysis.tasks}
 
+    record_text = _record_text(analysis)
     drafts: list[_StepDraft] = []
     covered_tasks: set[str] = set()
     for item in extracted.steps:
-        draft = _ground_step(item, decisions, requirements, tasks)
+        draft = _ground_step(item, decisions, requirements, tasks, record_text)
         if draft is None:
             continue
         drafts.append(draft)
         covered_tasks.update(draft.task_ids)
     _trim_blanket_citations(drafts, decisions, requirements, tasks)
+    _trim_unrelated_links(drafts, decisions, requirements, tasks)
 
     for task in analysis.tasks:
         if task.id not in covered_tasks:
@@ -148,11 +161,14 @@ def _to_domain(
             related_requirement_ids=draft.requirement_ids,
             related_task_ids=draft.task_ids,
             evidence=_evidence(draft, decisions, requirements, tasks),
+            when=draft.when,
         )
         for index, draft in enumerate(drafts, start=1)
     ]
 
-    criteria = _criteria_from_tasks(drafts, tasks)
+    criteria = _outcomes(extracted.outcomes, drafts, decisions, requirements)
+    if not criteria:
+        criteria = _criteria_from_tasks(drafts, tasks)
     summary = extracted.summary.strip() or (
         f"{len(steps)} implementation steps covering {len(requirements)} requirements "
         f"and {len(tasks)} tasks."
@@ -226,6 +242,61 @@ def _trim_blanket_citations(
             )
 
 
+def _trim_unrelated_links(
+    drafts: list[_StepDraft],
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+    tasks: dict[str, Task],
+) -> None:
+    """Drop decision/requirement links that have nothing to do with the step.
+
+    Small models hand IDs out almost in order ("Optimize indexing" citing
+    "reject CREATED -> COMPLETED"). A link stays if the step shares a
+    distinctive word with the item (or two of any kind), or if the step's own
+    tasks or requirements already link to it.
+    """
+    texts = {**{k: v.statement for k, v in decisions.items()},
+             **{k: v.statement for k, v in requirements.items()}}
+    item_words = [word_set(t) for t in texts.values()]
+    item_words += [word_set(f"{t.title} {t.description}") for t in tasks.values()]
+    counts: dict[str, int] = {}
+    for words in item_words:
+        for word in words:
+            counts[word] = counts.get(word, 0) + 1
+    limit = max(2, int(len(item_words) * _COMMON_WORD_SHARE))
+    common = {word for word, count in counts.items() if count > limit}
+
+    for draft in drafts:
+        # Judge by the step's title and its tasks (grounded in the transcript),
+        # not its description: the model writes that, and tends to justify its
+        # own links in it ("align on deadlines and migration constraints").
+        if draft.task_ids:
+            step_text = " ".join(
+                [draft.title] + [f"{tasks[t].title} {tasks[t].description}" for t in draft.task_ids]
+            )
+        else:
+            step_text = f"{draft.title} {draft.description}"
+        step_words = word_set(step_text)
+        backed_reqs = {r for t in draft.task_ids for r in tasks[t].related_requirement_ids}
+
+        def related(item_id: str) -> bool:
+            shared = step_words & word_set(texts[item_id])
+            return bool(shared - common) or len(shared) >= 2
+
+        kept_reqs = [r for r in draft.requirement_ids if r in backed_reqs or related(r)]
+        backed_decs = {d for r in kept_reqs for d in requirements[r].related_decision_ids}
+        kept_decs = [d for d in draft.decision_ids if d in backed_decs or related(d)]
+
+        if not (kept_reqs or kept_decs or draft.task_ids):
+            continue  # all it has: keep rather than lose the step
+        for item_id in set(draft.requirement_ids) - set(kept_reqs):
+            logger.info("implementation_plan_dropped_unrelated_link id=%s step=%s", item_id, draft.title)
+        for item_id in set(draft.decision_ids) - set(kept_decs):
+            logger.info("implementation_plan_dropped_unrelated_link id=%s step=%s", item_id, draft.title)
+        draft.requirement_ids = kept_reqs
+        draft.decision_ids = kept_decs
+
+
 def _plan(
     title: str,
     summary: str,
@@ -249,6 +320,7 @@ def _ground_step(
     decisions: dict[str, Decision],
     requirements: dict[str, Requirement],
     tasks: dict[str, Task],
+    record_text: str,
 ) -> _StepDraft | None:
     # Sort every cited ID by its prefix: a small model sometimes puts a
     # DEC- or TSK- ID in the wrong list, and the ID is still meaningful.
@@ -266,6 +338,7 @@ def _ground_step(
         decision_ids=_keep_known(by_prefix[DEC_PREFIX], decisions, kind="decision"),
         requirement_ids=_keep_known(by_prefix[REQ_PREFIX], requirements, kind="requirement"),
         task_ids=_keep_known(by_prefix[TSK_PREFIX], tasks, kind="task"),
+        when=_grounded_when(item.when, record_text),
     )
     if not (draft.decision_ids or draft.requirement_ids or draft.task_ids):
         logger.warning("implementation_plan_dropped_step_without_references")
@@ -279,7 +352,67 @@ def _task_step(task: Task) -> _StepDraft:
         description=task.description,
         requirement_ids=list(task.related_requirement_ids),
         task_ids=[task.id],
+        when=task.due,
     )
+
+
+def _record_text(analysis: MeetingAnalysis) -> str:
+    """Everything the record states, for checking model-written facts."""
+    parts: list[str] = []
+    parts += [d.statement for d in analysis.decisions]
+    parts += [r.statement for r in analysis.requirements]
+    for t in analysis.tasks:
+        parts += [t.title, t.description, t.due or "", *t.acceptance_criteria]
+    parts += [r.description for r in analysis.risks]
+    parts += [f"{q.question} {q.context}" for q in analysis.open_questions]
+    return " ".join(parts)
+
+
+def _grounded_when(raw: str, record_text: str) -> str | None:
+    when = " ".join(raw.split()).strip(" .")
+    if when.lower() in _EMPTY_WHEN or len(when) > _MAX_WHEN_CHARS:
+        return None
+    invented = adds_facts(when, record_text)
+    if invented:
+        logger.info("implementation_plan_dropped_when when=%s invented=%s", when, sorted(invented))
+        return None
+    return when
+
+
+def _outcomes(
+    extracted: list[ExtractedOutcome],
+    drafts: list[_StepDraft],
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+) -> list[str]:
+    """Plan-level "done when": checked outcomes, else the decisions the plan applies."""
+    statements = {**{k: v.statement for k, v in decisions.items()},
+                  **{k: v.statement for k, v in requirements.items()}}
+    outcomes: list[str] = []
+
+    def add(text: str) -> None:
+        if text and not any(similarity(text, kept) >= 0.6 for kept in outcomes):
+            outcomes.append(text)
+
+    for item in extracted:
+        cited = [statements[i] for i in item.ids if i in statements]
+        if not cited:
+            continue
+        source = " ".join(cited)
+        text = item.text.strip()
+        if text and not adds_facts(text, source) and coverage(text, source) >= _OUTCOME_MIN_COVERAGE:
+            add(text)
+        else:
+            logger.info("implementation_plan_outcome_replaced text=%s", text)
+            add(cited[0])
+    if outcomes:
+        return outcomes[:_MAX_OUTCOMES]
+
+    # The model gave none: the decisions the plan applies, in plan order.
+    for draft in drafts:
+        for item_id in draft.decision_ids:
+            add(statements[item_id])
+    return outcomes[:_MAX_OUTCOMES]
 
 
 def _keep_known(

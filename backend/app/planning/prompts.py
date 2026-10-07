@@ -5,11 +5,18 @@ TASK: Turn the engineering record above into an implementation plan.
 
 - "title": short name for the plan.
 - "summary": 2-3 sentences on what will be built and the key constraints.
-- "steps": ordered implementation steps (what to build first goes first).
-  Each step has a short "title", a "description" of what to build, the
+- "steps": implementation steps in the order they happen. Each step has a
+  short "title", a one-sentence "description" of what to do, "when" it happens, the
   "decision_ids" it applies (DEC-...), and the "requirement_ids" (REQ-...)
   and "task_ids" (TSK-...) it delivers. Put each ID in the matching list.
   Every step must cite at least one ID.
+- "when": the timeframe, using only dates and timeframes written in the
+  record ("before October 28", "launch week", "first 30 days after launch"),
+  or "" if the record gives none.
+- "outcomes": up to 6 results that show the whole plan is done. Each restates
+  one or more decisions or requirements as a finished result ("Premium
+  package launched at 2,499 per month") and lists their IDs in "ids". Never
+  add a number, date or target those items do not state.
 
 RULES
 - Decisions are constraints: honor them, never contradict them.
@@ -48,14 +55,8 @@ def render_record(analysis: MeetingAnalysis) -> str:
             extras.append("for " + ", ".join(t.related_requirement_ids))
         task_rows.append(f"{t.id}: {t.title} — {t.description} ({'; '.join(extras)})")
     add("TASKS", task_rows)
-    add(
-        "RISKS",
-        [f"{r.id} [{r.severity.value}]: {r.description}" for r in analysis.risks],
-    )
-    add(
-        "OPEN QUESTIONS",
-        [f"{q.id}: {q.question}" for q in analysis.open_questions],
-    )
+    # Risks and open questions are copied into the plan by the application and
+    # never cited by steps; leaving them out shortens the prompt on slow CPUs.
     return "\n\n".join(sections)
 
 

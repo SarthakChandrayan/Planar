@@ -59,20 +59,19 @@
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
-  color: var(--accent-ink);
-  background: var(--accent);
 }
 
-.brand-name {
-  font-family: var(--display);
-  font-size: 1.15rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+/* The wordmark is a mask filled with the text colour, so it follows the theme. */
+.brand-wordmark {
+  display: block;
+  width: 77px;
+  height: 19px;
+  background-color: var(--ink);
+  -webkit-mask: url('/brand/wordmark.png') no-repeat center / contain;
+  mask: url('/brand/wordmark.png') no-repeat center / contain;
 }
 
 .topbar-right {
@@ -287,12 +286,79 @@
   padding: 18px;
 }
 
-.composer-label {
-  display: block;
+.composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 10px;
+  user-select: none;
+}
+
+.composer-label {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--ink-2);
+}
+
+.composer-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.tool-button:hover,
+.tool-button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.link-button.inline {
+  margin: 0;
+}
+
+/* Full screen: the composer covers the page; the text box takes all the room. */
+.composer.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 20px max(24px, calc((100vw - 1100px) / 2)) 20px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: composer-open 0.16s ease-out;
+}
+
+.composer.is-expanded textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  font-size: 0.95rem;
+}
+
+@keyframes composer-open {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
 }
 
 .composer textarea {
@@ -1144,6 +1210,22 @@
 
 .timeline-step.item::before {
   display: none;
+}
+
+/* Phase heading where the plan's timeframe changes. */
+.timeline-phase {
+  position: relative;
+  z-index: 1;
+  margin: 8px 0 -2px 44px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.timeline-phase:first-child {
+  margin-top: 0;
 }
 
 .timeline-num {

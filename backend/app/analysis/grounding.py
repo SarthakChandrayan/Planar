@@ -236,6 +236,203 @@ def is_hedged(text: str) -> bool:
     return bool(words & _HEDGES)
 
 
+_MONTHS = frozenset(
+    """january february march april may june july august september october
+    november december jan feb mar apr jun jul aug sep sept oct nov dec monday
+    tuesday wednesday thursday friday saturday sunday""".split()
+)
+
+
+_LIST_NUMBER = re.compile(r"^[ \t]*(?:#+[ \t]*)?\d+[.)][ \t]+", re.MULTILINE)
+
+
+def facts(text: str) -> set[str]:
+    """The checkable specifics in a text: numbers and calendar words.
+
+    "Launch ₹2,499 on November 4" -> {"2499", "november", "4"}. Used to make
+    sure model-written text adds no number or date the record lacks.
+    List and section numbering ("## 5. Retry Strategy", "5. Temporary
+    failures ...") is not a fact anyone stated, so it is ignored.
+    """
+    lowered = _LIST_NUMBER.sub("", text.lower())
+    numbers = {
+        n.replace(",", "")
+        for n in re.findall(r"(?<![\w.])\d[\d,]*(?:\.\d+)?(?![a-z])", lowered)
+    }
+    words = set(re.findall(r"[a-z]+", lowered)) & _MONTHS
+    # "may" is usually the verb, not the month.
+    words.discard("may")
+    return numbers | words
+
+
+def adds_facts(text: str, source: str) -> set[str]:
+    """Numbers or dates in ``text`` that ``source`` does not contain."""
+    return facts(text) - facts(source)
+
+
+def word_set(text: str) -> set[str]:
+    """Distinctive words of a text (no stopwords, plurals folded)."""
+    return _expand(_tokens(text))
+
+
+_PRESENT_PHRASES = ("currently", "presently", "at present", "right now", "at the moment")
+
+
+def describes_present(text: str) -> bool:
+    """True when a line describes how things are now, not what must be."""
+    lowered = text.lower()
+    if not any(phrase in lowered for phrase in _PRESENT_PHRASES):
+        return False
+    words = set(re.findall(r"[a-z']+", lowered))
+    return not (words & _FIRM or any(phrase in lowered for phrase in _FIRM_PHRASES))
+
+
+_NUMBER_QUALIFIER = re.compile(
+    r"\b(approximately|about|around|roughly|nearly|almost|up to|at least|at most|"
+    r"more than|less than|fewer than|over|under)\s+([₹$€£]?\d[\d,.]*)",
+    re.IGNORECASE,
+)
+_NUMBER = re.compile(r"(?<![\w.])([₹$€£]?)(\d[\d,.]*)")
+_QUALIFIER_WORDS = {
+    "approximately", "about", "around", "roughly", "nearly", "almost", "up", "at",
+    "more", "less", "fewer", "over", "under", "~",
+}
+_TIME_QUALIFIERS = ("initially", "eventually", "temporarily")
+_LOWER_FIRST = frozenset("the a an this these those all each every any some".split())
+
+
+def restore_qualifiers(claim: str, evidence: str) -> str:
+    """Put back qualifiers the claim dropped from its evidence.
+
+    "could reach 72%" from "reaches approximately 72%" -> "could reach
+    approximately 72%"; "Kafka is used for X" from "Kafka should initially be
+    introduced for X" -> "Initially, Kafka is used for X".
+    """
+    qualified = {}
+    for match in _NUMBER_QUALIFIER.finditer(evidence):
+        number = re.sub(r"[₹$€£]", "", match.group(2)).rstrip(".,")
+        qualified.setdefault(number, match.group(1).lower())
+
+    def fix_number(match: re.Match[str]) -> str:
+        number = match.group(2).rstrip(".,")
+        qualifier = qualified.get(number)
+        if qualifier is None:
+            return match.group(0)
+        before = claim[: match.start()].split()
+        if before and before[-1].lower().strip("(") in _QUALIFIER_WORDS:
+            return match.group(0)
+        if len(before) >= 2 and " ".join(before[-2:]).lower() in ("up to", "at least", "at most", "more than", "less than", "fewer than"):
+            return match.group(0)
+        return f"{qualifier} {match.group(0)}"
+
+    claim = _NUMBER.sub(fix_number, claim)
+
+    lowered_claim = claim.lower()
+    for word in _TIME_QUALIFIERS:
+        if re.search(rf"\b{word}\b", evidence, re.IGNORECASE) and word not in lowered_claim:
+            if coverage(claim, evidence) < 0.5:
+                continue  # the evidence says more than this claim is about
+            first, _, rest = claim.partition(" ")
+            if first.lower() in _LOWER_FIRST:
+                first = first.lower()
+            claim = f"{word.capitalize()}, {first} {rest}".strip()
+            break
+    return claim
+
+
+_MUST = re.compile(r"\bmust\b", re.IGNORECASE)
+_SHOULD = re.compile(r"\bshould\b", re.IGNORECASE)
+
+
+def restore_modality(claim: str, evidence: str) -> str:
+    """Keep the speaker's strength: evidence that says "should" stays "should".
+
+    "Services should authenticate with short-lived credentials" must not
+    become "Services must authenticate ...".
+    """
+    claim = _keep_never(claim, evidence)
+    if not _MUST.search(claim) or not _SHOULD.search(evidence):
+        return claim
+    words = set(re.findall(r"[a-z']+", evidence.lower()))
+    if words & _FIRM or any(phrase in evidence.lower() for phrase in _FIRM_PHRASES):
+        return claim  # the evidence states a real obligation too
+    return _MUST.sub(lambda m: "Should" if m.group(0)[0].isupper() else "should", claim)
+
+
+_NOT_AFTER_MODAL = re.compile(r"\b(must|should|will|shall)\s+not\b", re.IGNORECASE)
+
+
+def _keep_never(claim: str, evidence: str) -> str:
+    """ "must never" in the evidence stays "must never", not "must not". """
+    if not re.search(r"\bnever\b", evidence, re.IGNORECASE) or re.search(r"\bnever\b", claim, re.IGNORECASE):
+        return claim
+    return _NOT_AFTER_MODAL.sub(lambda m: f"{m.group(1)} never", claim, count=1)
+
+
+_NEGATIONS = frozenset(
+    """not no never without lacks lack lacking missing absent cannot isn't wasn't
+    aren't weren't hasn't haven't hadn't doesn't don't didn't can't won't""".split()
+)
+# A negative stated as present fact: "was not yet enabled", "is missing", "lacks".
+# Modal negatives ("could not", "may not") are possibilities, which is what a
+# risk is, so they don't count.
+_STATE_NEGATIVE = re.compile(
+    r"\b(?:not yet|lacks?|lacking|missing|absent)\b"
+    r"|\b(?:is|are|was|were|has|have|had|does|do|did)(?:\s+\w+)?\s+not\b"
+    r"|\b(?:isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|doesn't|don't|didn't)\b",
+    re.IGNORECASE,
+)
+# ...unless it sits in a condition: "duplicates if retries are not handled".
+_CONDITION = re.compile(r"\b(?:if|unless|when|whenever|in case)\b", re.IGNORECASE)
+
+
+def asserts_unstated_negative(claim: str, evidence: str) -> bool:
+    """The claim states as fact that something is NOT so; the evidence never says that.
+
+    "Encryption at rest was not yet enabled" from "Arjun said it should be
+    enabled" turns a recommendation into a claim about the current state.
+    """
+    for match in _STATE_NEGATIVE.finditer(claim):
+        clause = re.split(r"[,;:]", claim[: match.start()])[-1]
+        if _CONDITION.search(clause):
+            continue
+        evidence_words = set(re.findall(r"[a-z']+", evidence.lower()))
+        if not (evidence_words & _NEGATIONS or "n't" in evidence.lower()):
+            return True
+    return False
+
+
+_QUESTION = re.compile(r"\?\s*$|\basked (?:whether|if|how|what|why)\b|\bwondered\b", re.IGNORECASE)
+_AFFIRMS = re.compile(
+    r"\b(acknowledged|agreed|confirmed|yes|true|correct|right|could|might|would|will|possible|likely)\b",
+    re.IGNORECASE,
+)
+
+
+_UNRESOLVED = re.compile(
+    r"\b(?:needs? to (?:determine|decide|confirm|define|agree on|work out)"
+    r"|(?:has|have) not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved|agreed)"
+    r"|not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved)"
+    r"|remains? (?:unresolved|open|undecided)|undecided|to be (?:decided|determined|confirmed)"
+    r"|tbd)\b",
+    re.IGNORECASE,
+)
+
+
+def is_unresolved(text: str) -> bool:
+    """A line that leaves something open ("the team needs to determine X")."""
+    return bool(_UNRESOLVED.search(text))
+
+
+def is_question(text: str) -> bool:
+    return bool(_QUESTION.search(text.strip()))
+
+
+def affirms(text: str) -> bool:
+    """A reply that confirms what was asked ("Mehul acknowledged that it could")."""
+    return bool(_AFFIRMS.search(text))
+
+
 def _tokens(text: str) -> set[str]:
     words = re.findall(r"[a-z0-9]+", text.lower())
     return {w for w in words if len(w) >= 2 and w not in _STOPWORDS}
@@ -250,6 +447,9 @@ def _expand(tokens: set[str]) -> set[str]:
 
 
 def _stem(token: str) -> str:
+    # "retries"/"retried" -> "retry", "policies" -> "policy"
+    if len(token) > 4 and token.endswith(("ies", "ied")):
+        return token[:-3] + "y"
     if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
         return token[:-1]
     return token

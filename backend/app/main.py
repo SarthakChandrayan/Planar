@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -30,6 +32,29 @@ from app.runs import RunManager
 logger = logging.getLogger(__name__)
 
 DEV_LLM_PING_PROMPT = "Explain what an API is in one sentence."
+# Don't ask Ollama to load the model more often than this.
+_WARM_UP_INTERVAL_SECONDS = 300.0
+_warm_up_lock = threading.Lock()
+_last_warm_up = 0.0
+
+
+def _warm_up_in_background(provider: LLMProvider) -> bool:
+    """Start loading the model unless that was asked for recently."""
+    global _last_warm_up
+    with _warm_up_lock:
+        now = time.monotonic()
+        if now - _last_warm_up < _WARM_UP_INTERVAL_SECONDS:
+            return False
+        _last_warm_up = now
+
+    def run() -> None:
+        try:
+            provider.warm_up()
+        except LLMProviderError as exc:
+            logger.info("llm_warm_up_skipped reason=%s", exc)
+
+    threading.Thread(target=run, name="llm-warm-up", daemon=True).start()
+    return True
 
 
 class HealthResponse(BaseModel):
@@ -131,6 +156,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return JSONResponse(status_code=503, content=body.model_dump())
         return ReadinessResponse(status="ok", model=settings.ollama_model)
+
+    @app.post("/api/warmup", status_code=202)
+    def warm_up(
+        provider: Annotated[LLMProvider, Depends(get_llm_provider)],
+    ) -> dict[str, bool]:
+        """Load the model while the user is still pasting, so the run starts sooner."""
+        return {"started": _warm_up_in_background(provider)}
 
     @app.get(
         "/dev/llm-ping",

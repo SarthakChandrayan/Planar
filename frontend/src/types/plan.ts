@@ -8,6 +8,7 @@ export interface ImplementationPlanStep {
   related_requirement_ids?: string[]
   related_task_ids?: string[]
   evidence?: SourceReference[]
+  when?: string | null
 }
 
 export interface ImplementationPlan {

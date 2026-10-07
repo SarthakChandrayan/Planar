@@ -219,3 +219,21 @@ def test_markdown_report_includes_plan_map_diagram() -> None:
     assert "STEP_001 --> OWNER_Priya" in text
     assert "DEC_001 --> REQ_001" in text  # requirement's own decision link
     assert text.count("```") == 2
+
+
+def test_markdown_shows_step_timing() -> None:
+    from datetime import UTC, datetime
+
+    from app.report import plan_map_mermaid, render_markdown
+    from app.runs import Run
+    from tests.test_implementation_planner import PLAN, _analysis
+
+    analysis = _analysis()
+    analysis.tasks[0].due = "Friday"
+    steps = [dict(PLAN["steps"][0], when="By Friday", decision_ids=[])]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps, outcomes=[])})).plan(analysis)
+    run = Run(id="r", title="T", status="succeeded", created_at=datetime.now(UTC),
+              transcript_chars=1, transcript="x", analysis=analysis, plan=plan)
+
+    assert "1. **Build idempotency middleware** · By Friday" in render_markdown(run)
+    assert "<br/><i>By Friday</i>" in "\n".join(plan_map_mermaid(analysis, plan))

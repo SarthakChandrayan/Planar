@@ -96,3 +96,21 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
   </Icon>
 )
+
+export const ExpandIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />
+  </Icon>
+)
+
+export const CollapseIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 14h6v6M20 10h-6V4M10 14l-7 7M14 10l7-7" />
+  </Icon>
+)
+
+export const ClearIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Icon>
+)

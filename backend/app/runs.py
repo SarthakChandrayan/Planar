@@ -99,6 +99,8 @@ class Run(RunSummary):
     # 1 for the plan made with the analysis; +1 per regeneration.
     plan_version: int = 1
     plan_job: PlanJob | None = None
+    # What the model proposed but a faithfulness check removed, and why.
+    dropped_items: list[dict[str, str]] = Field(default_factory=list)
 
     def summary(self) -> RunSummary:
         return RunSummary.model_validate(self.model_dump(include=set(RunSummary.model_fields)))
@@ -139,6 +141,9 @@ class RunContext:
 
     def warn(self, message: str) -> None:
         self._manager._add_warning(self._run_id, message)
+
+    def record_dropped(self, items: list[dict[str, str]]) -> None:
+        self._manager._set_dropped(self._run_id, items)
 
     def check_cancelled(self) -> None:
         if self._manager._is_cancel_requested(self._run_id):
@@ -453,6 +458,13 @@ class RunManager:
             run = self._runs.get(run_id)
             if run is not None:
                 run.warnings.append(message)
+
+    # Quoted: inside this class, "list" is the list() method, not the builtin.
+    def _set_dropped(self, run_id: str, items: "list[dict[str, str]]") -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None:
+                run.dropped_items = list(items)
 
     def _is_cancel_requested(self, key: str) -> bool:
         run_id = key.removeprefix("plan:")

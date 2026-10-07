@@ -50,6 +50,12 @@ map is drawn from the validated record, not by the model, so it is instant
 and every arrow is a real link. The Markdown export includes the same map
 as a Mermaid diagram, which GitHub, Notion and Obsidian render.
 
+**Plan timeline and outcomes.** Each plan step says when it happens
+("before October 28", "first 30 days"), and the plan ends with the outcomes
+that mean it is done. Both are written by the model but checked: a timeframe
+or outcome may not contain a number or date the meeting record lacks. A bad
+timeframe is dropped; a bad outcome is replaced by the decision it cites.
+
 **Time estimates.** As you paste, Planar shows roughly how long the run will
 take; during a run it shows the time left. Estimates start from timings
 measured on a CPU-only laptop and then learn from your own finished runs

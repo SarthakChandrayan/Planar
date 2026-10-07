@@ -30,8 +30,16 @@ from app.analysis.errors import (
 from app.analysis.grounding import (
     Grounder,
     Grounding,
+    adds_facts,
+    affirms,
+    asserts_unstated_negative,
     coverage,
+    describes_present,
+    is_question,
+    is_unresolved,
+    restore_modality,
     is_hedged,
+    restore_qualifiers,
     shared_words,
     similarity,
     text_mentioned,
@@ -53,7 +61,7 @@ from app.analysis.schemas import (
     RisksQuestionsPass,
     TasksPass,
 )
-from app.analysis.transcript import NumberedTranscript, TranscriptChunk
+from app.analysis.transcript import NumberedTranscript, TranscriptChunk, TranscriptLine
 from app.domain import (
     DEC_PREFIX,
     OQ_PREFIX,
@@ -82,6 +90,9 @@ _RESTATED_DECISION_SIMILARITY = 0.75
 # A requirement whose evidence is only decision lines, and whose wording is
 # mostly those decisions' wording, restates them and adds nothing.
 _RESTATED_DECISIONS_COVERAGE = 0.5
+# Wherever its evidence comes from, a requirement this much made of one
+# decision's words is that decision restated.
+_RESTATED_DECISION_COVERAGE = 0.7
 # Inferred links: wording overlap needed, lower when evidence lines are shared.
 _LINK_SIMILARITY = 0.3
 _LINK_SIMILARITY_SAME_LINES = 0.12
@@ -143,6 +154,8 @@ class AnalysisOutcome:
     analysis: MeetingAnalysis
     warnings: list[str] = field(default_factory=list)
     chunks: int = 1
+    # What the model proposed but a check removed: {"kind", "text", "reason"}.
+    dropped: list[dict[str, str]] = field(default_factory=list)
 
 
 class MeetingAnalyzer:
@@ -226,7 +239,7 @@ class MeetingAnalyzer:
             builder.dropped_ungrounded,
             builder.dropped_duplicates,
         )
-        return AnalysisOutcome(analysis, list(builder.warnings), len(chunks))
+        return AnalysisOutcome(analysis, list(builder.warnings), len(chunks), list(builder.dropped))
 
     def _run_pass(
         self,
@@ -292,6 +305,15 @@ class _RecordBuilder:
         self.successful_passes = 0
         self.dropped_ungrounded = 0
         self.dropped_duplicates = 0
+        self.dropped: list[dict[str, str]] = []
+
+    def _drop(self, kind: str, claim: str, reason: str, *, duplicate: bool = False) -> None:
+        if duplicate:
+            self.dropped_duplicates += 1
+        else:
+            self.dropped_ungrounded += 1
+        self.dropped.append({"kind": kind, "text": claim, "reason": reason})
+        logger.info("analysis_dropped kind=%s reason=%s claim=%s", kind, reason, _preview(claim, 120))
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
@@ -336,13 +358,12 @@ class _RecordBuilder:
         """
         grounding = self._grounder.ground(claim, lines)
         if grounding is None:
-            self.dropped_ungrounded += 1
-            logger.info("analysis_dropped_ungrounded kind=%s claim=%s", kind, _preview(claim, 120))
+            self._drop(kind, claim, "no line in the transcript supports it")
             return None
         if reject is not None and reject(grounding):
             return None
         if self._is_duplicate(claim, grounding, self._seen[kind]):
-            self.dropped_duplicates += 1
+            self._drop(kind, claim, "duplicate", duplicate=True)
             return None
         self._seen[kind].append((claim, grounding))
         return grounding
@@ -369,7 +390,7 @@ class _RecordBuilder:
         self.decisions.append(
             Decision(
                 id=format_item_id(DEC_PREFIX, len(self.decisions) + 1),
-                statement=item.statement,
+                statement=_faithful(item.statement, grounding),
                 confidence=grounding.confidence,
                 source_reference=self._source(grounding, item.statement),
             )
@@ -380,7 +401,7 @@ class _RecordBuilder:
             similarity(item.statement, d.statement) >= _RESTATED_DECISION_SIMILARITY
             for d in self.decisions
         ):
-            self.dropped_duplicates += 1
+            self._drop("requirement", item.statement, "restates a decision", duplicate=True)
             return
         grounding = self._accept(
             "requirement",
@@ -390,25 +411,69 @@ class _RecordBuilder:
         )
         if grounding is None:
             return
+        grounding = self._with_answer(grounding)
         self.requirements.append(
             Requirement(
                 id=format_item_id(REQ_PREFIX, len(self.requirements) + 1),
-                statement=item.statement,
+                statement=_faithful(item.statement, grounding),
                 confidence=grounding.confidence,
                 source_reference=self._source(grounding, item.statement),
             )
         )
 
     def _reject_requirement(self, statement: str, grounding: Grounding) -> bool:
+        if any(
+            coverage(statement, d.statement) >= _RESTATED_DECISION_COVERAGE
+            for d in self.decisions
+        ):
+            self._drop("requirement", statement, "restates a decision", duplicate=True)
+            return True
         if self._restates_decisions(statement, grounding):
-            self.dropped_duplicates += 1
-            logger.info("analysis_dropped_restated_decisions claim=%s", _preview(statement, 120))
+            self._drop("requirement", statement, "restates the decisions list", duplicate=True)
             return True
         if _upgrades_hedge(statement, grounding):
-            self.dropped_ungrounded += 1
-            logger.info("analysis_dropped_hedged_requirement claim=%s", _preview(statement, 120))
+            self._drop("requirement", statement, "turns an estimate or suggestion into a must")
+            return True
+        if describes_present(_evidence_text(grounding)):
+            self._drop("requirement", statement, "describes how things are now, not a requirement")
             return True
         return False
+
+    def _reject_risk(self, description: str, grounding: Grounding) -> bool:
+        evidence = _evidence_text(grounding)
+        if all(is_unresolved(line.content) for line in grounding.lines):
+            # "needs to determine X" is an open question; any consequence the
+            # model attached ("could lead to data loss") was its own idea.
+            self._drop("risk", description, "an unresolved item, not a risk; kept as an open question")
+            self._add_open_question(
+                ExtractedOpenQuestion(
+                    question=grounding.lines[0].content,
+                    context="Left unresolved in the meeting.",
+                    lines=[line.number for line in grounding.lines],
+                )
+            )
+            return True
+        if asserts_unstated_negative(description, evidence):
+            self._drop("risk", description, "claims something is not so; nobody said that")
+            return True
+        if all(is_question(line.content) for line in grounding.lines):
+            answer = self._next_line(grounding)
+            if answer is None or not affirms(answer.content):
+                self._drop("risk", description, "only a question, and nobody confirmed it")
+                return True
+        return False
+
+    def _next_line(self, grounding: Grounding) -> TranscriptLine | None:
+        return self._transcript.get(grounding.lines[-1].number + 1)
+
+    def _with_answer(self, grounding: Grounding) -> Grounding:
+        """Evidence that is only a question also shows the reply that confirmed it."""
+        if not all(is_question(line.content) for line in grounding.lines):
+            return grounding
+        answer = self._next_line(grounding)
+        if answer is None:
+            return grounding
+        return Grounding(grounding.lines + (answer,), grounding.score, grounding.reanchored)
 
     def _restates_decisions(self, statement: str, grounding: Grounding) -> bool:
         lines = {line.source_line for line in grounding.lines}
@@ -429,7 +494,13 @@ class _RecordBuilder:
         grounding = self._accept("task", claim, item.lines)
         if grounding is None:
             return
-        criteria = [c.strip() for c in item.acceptance_criteria if c and c.strip()]
+        criteria = []
+        for criterion in (c.strip() for c in item.acceptance_criteria if c and c.strip()):
+            invented = adds_facts(criterion, self._transcript.text)
+            if invented:
+                self._drop("task criterion", criterion, f"number or date not in the meeting: {', '.join(sorted(invented))}")
+                continue
+            criteria.append(criterion)
         self.tasks.append(
             Task(
                 id=format_item_id(TSK_PREFIX, len(self.tasks) + 1),
@@ -444,13 +515,19 @@ class _RecordBuilder:
         )
 
     def _add_risk(self, item: ExtractedRisk) -> None:
-        grounding = self._accept("risk", item.description, item.lines)
+        grounding = self._accept(
+            "risk",
+            item.description,
+            item.lines,
+            reject=lambda g: self._reject_risk(item.description, g),
+        )
         if grounding is None:
             return
+        grounding = self._with_answer(grounding)
         self.risks.append(
             Risk(
                 id=format_item_id(RSK_PREFIX, len(self.risks) + 1),
-                description=item.description,
+                description=_faithful(item.description, grounding),
                 severity=item.severity,
                 source_reference=self._source(grounding, item.description),
             )
@@ -551,6 +628,16 @@ def _source(grounding: Grounding, grounder: Grounder, claim: str) -> SourceRefer
         line_end=lines[-1].source_line,
         speaker=speaker,
     )
+
+
+def _evidence_text(grounding: Grounding) -> str:
+    return " ".join(line.content for line in grounding.lines)
+
+
+def _faithful(claim: str, grounding: Grounding) -> str:
+    """The claim with the evidence's qualifiers and modal strength put back."""
+    evidence = _evidence_text(grounding)
+    return restore_modality(restore_qualifiers(claim, evidence), evidence)
 
 
 def _upgrades_hedge(claim: str, grounding: Grounding) -> bool:

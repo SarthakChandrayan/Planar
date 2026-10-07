@@ -94,7 +94,8 @@ def _plan(plan: ImplementationPlan) -> list[str]:
     for index, step in enumerate(plan.steps, start=1):
         refs = step.related_decision_ids + step.related_requirement_ids + step.related_task_ids
         suffix = f" _({', '.join(refs)})_" if refs else ""
-        out += [f"{index}. **{step.title}**{suffix}", f"   {step.description}"]
+        when = f" · {step.when}" if step.when else ""
+        out += [f"{index}. **{step.title}**{when}{suffix}", f"   {step.description}"]
     if plan.acceptance_criteria:
         out += ["", "### Done when", ""]
         out += [f"- [ ] {criterion}" for criterion in plan.acceptance_criteria]
@@ -174,7 +175,9 @@ def plan_map_mermaid(analysis: MeetingAnalysis, plan: ImplementationPlan) -> lis
         out.append("  end")
     out.append('  subgraph how["Plan steps"]')
     out += [
-        f'    {node(step.id)}["{i}. {_label(step.title)}"]'
+        f'    {node(step.id)}["{i}. {_label(step.title)}'
+        + (f"<br/><i>{_label(step.when)}</i>" if step.when else "")
+        + '"]'
         for i, step in enumerate(plan.steps, start=1)
     ]
     out.append("  end")

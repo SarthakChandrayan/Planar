@@ -172,3 +172,46 @@ def test_joined_evidence_never_doubles_ellipses() -> None:
     ref = _source(Grounding(tuple(numbered.lines), 2.0, False), grounder, "pricing confusion value")
     assert "… …" not in ref.excerpt
     assert ref.excerpt.count("…") >= 1
+
+
+def test_facts_find_numbers_and_dates() -> None:
+    from app.analysis.grounding import adds_facts, facts
+
+    assert facts("Launch at ₹2,499 on November 4, review Oct 28") == {"2499", "november", "4", "oct", "28"}
+    assert "may" not in facts("We may ship it")
+    assert adds_facts("120 qualified leads in 30 days", "Segment the 120 existing leads") == {"30"}
+    assert adds_facts("approximately 50 accounts", "support approximately 50 accounts") == set()
+
+
+def test_qualifiers_are_restored() -> None:
+    from app.analysis.grounding import restore_qualifiers
+
+    assert (
+        restore_qualifiers("PostgreSQL could reach 72% CPU", "currently reaches approximately 72% CPU utilization")
+        == "PostgreSQL could reach approximately 72% CPU"
+    )
+    # Already qualified, or a number the evidence doesn't qualify: unchanged.
+    assert restore_qualifiers("Support up to 50 accounts", "support approximately 50 accounts") == "Support up to 50 accounts"
+    assert restore_qualifiers("Keep 30 days of logs", "keep 30 days of logs") == "Keep 30 days of logs"
+    assert (
+        restore_qualifiers(
+            "Kafka is used for transaction-domain events",
+            "Kafka should initially be introduced only for transaction-domain events.",
+        )
+        == "Initially, Kafka is used for transaction-domain events"
+    )
+    assert restore_qualifiers("The dead-letter topic stores invalid events", "Invalid events should eventually be routed to a dead-letter topic").startswith("Eventually, the dead-letter")
+
+
+def test_present_state_is_not_an_obligation() -> None:
+    from app.analysis.grounding import describes_present
+
+    assert describes_present("RabbitMQ is not currently used for transaction state transitions.")
+    assert not describes_present("Currently it is slow, so the API must cache results.")
+    assert not describes_present("The API must cache results.")
+
+
+def test_plural_and_past_forms_match() -> None:
+    from app.analysis.grounding import word_set
+
+    assert word_set("retries policies") == word_set("retry policy") == word_set("retried policy")

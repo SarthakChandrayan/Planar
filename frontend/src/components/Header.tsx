@@ -1,7 +1,6 @@
 import { useTheme } from '../theme'
 import type { Readiness } from '../types/run'
 import { MoonIcon, SunIcon } from './icons'
-import { Logo } from './Logo'
 
 export function Header({
   readiness,
@@ -16,10 +15,8 @@ export function Header({
   return (
     <header className="topbar">
       <button type="button" className="brand" onClick={onHome} aria-label="Planar home">
-        <span className="brand-mark">
-          <Logo size={22} />
-        </span>
-        <span className="brand-name">Planar</span>
+        <img className="brand-mark" src="/brand/icon-64.png" width={32} height={32} alt="" />
+        <span className="brand-wordmark" aria-hidden="true" />
       </button>
       <div className="topbar-right">
         {readiness ? (

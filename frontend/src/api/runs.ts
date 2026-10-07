@@ -62,6 +62,11 @@ export async function getReadiness(): Promise<Readiness> {
   }
 }
 
+/** Ask the backend to load the model now; ignored if it can't. */
+export function warmUp(): void {
+  void request('/api/warmup', { method: 'POST' }).catch(() => undefined)
+}
+
 export function listSamples(): Promise<SampleSummary[]> {
   return request<SampleSummary[]>('/api/samples')
 }

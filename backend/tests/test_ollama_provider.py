@@ -189,3 +189,23 @@ def test_check_ready_reports_unreachable_server() -> None:
 
     with pytest.raises(LLMUnavailableError, match="not reachable"):
         _provider(handler).check_ready()
+
+
+def test_warm_up_loads_the_model_without_a_prompt() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"done": True})
+
+    _provider(handler, keep_alive="30m").warm_up()
+    assert seen == {"path": "/api/generate", "body": {"model": "configured-model", "keep_alive": "30m"}}
+
+
+def test_warm_up_reports_unreachable_server() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    with pytest.raises(LLMUnavailableError):
+        _provider(handler).warm_up()
