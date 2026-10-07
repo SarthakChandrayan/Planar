@@ -40,6 +40,7 @@ from app.analysis.grounding import (
     restore_modality,
     is_hedged,
     restore_qualifiers,
+    word_set,
     shared_words,
     similarity,
     text_mentioned,
@@ -100,6 +101,9 @@ _LINK_SIMILARITY_SAME_LINES = 0.12
 _LINK_MIN_SHARED_WORDS = 2
 _LINK_MIN_OVERLAP = 0.5
 _MAX_LINKS = 2
+# After a question, look this many lines ahead for the answer; quote at most this many.
+_ANSWER_WINDOW = 3
+_MAX_ANSWER_LINES = 2
 _MAX_ACCEPTANCE_CRITERIA = 4
 _GENERIC_OWNERS = frozenset(
     {"", "none", "n/a", "na", "tbd", "unknown", "unassigned", "team", "the team",
@@ -411,7 +415,7 @@ class _RecordBuilder:
         )
         if grounding is None:
             return
-        grounding = self._with_answer(grounding)
+        grounding = self._with_answer(grounding, item.statement)
         self.requirements.append(
             Requirement(
                 id=format_item_id(REQ_PREFIX, len(self.requirements) + 1),
@@ -466,14 +470,28 @@ class _RecordBuilder:
     def _next_line(self, grounding: Grounding) -> TranscriptLine | None:
         return self._transcript.get(grounding.lines[-1].number + 1)
 
-    def _with_answer(self, grounding: Grounding) -> Grounding:
-        """Evidence that is only a question also shows the reply that confirmed it."""
+    def _with_answer(self, grounding: Grounding, claim: str) -> Grounding:
+        """Evidence that is only a question also shows the answer.
+
+        The answer is the following line(s) that best support the claim, not
+        simply the next line: after "Arjun asked whether exactly-once was
+        required", "He recommended at-least-once delivery" is the conclusion.
+        """
         if not all(is_question(line.content) for line in grounding.lines):
             return grounding
-        answer = self._next_line(grounding)
-        if answer is None:
+        last = grounding.lines[-1].number
+        following = [
+            line
+            for n in range(last + 1, last + 1 + _ANSWER_WINDOW)
+            if (line := self._transcript.get(n)) is not None
+        ]
+        if not following:
             return grounding
-        return Grounding(grounding.lines + (answer,), grounding.score, grounding.reanchored)
+        claim_words = word_set(claim)
+        scored = [(len(claim_words & word_set(line.content)), line) for line in following]
+        best = sorted((s for s in scored if s[0] > 0), key=lambda s: -s[0])[:_MAX_ANSWER_LINES]
+        answer = sorted((line for _, line in best), key=lambda l: l.number) or following[:1]
+        return Grounding(grounding.lines + tuple(answer), grounding.score, grounding.reanchored)
 
     def _restates_decisions(self, statement: str, grounding: Grounding) -> bool:
         lines = {line.source_line for line in grounding.lines}
@@ -523,7 +541,7 @@ class _RecordBuilder:
         )
         if grounding is None:
             return
-        grounding = self._with_answer(grounding)
+        grounding = self._with_answer(grounding, item.description)
         self.risks.append(
             Risk(
                 id=format_item_id(RSK_PREFIX, len(self.risks) + 1),

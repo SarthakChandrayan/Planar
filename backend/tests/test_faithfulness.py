@@ -155,3 +155,21 @@ def test_unresolved_item_becomes_an_open_question_not_a_risk() -> None:
     assert question.question.startswith("The team also needs to determine the retention period")
     assert "data loss" not in question.question + question.context
     assert any(d["kind"] == "risk" for d in outcome.dropped)
+
+
+
+def test_answer_evidence_includes_the_conclusion_not_just_the_next_line() -> None:
+    notes = (
+        "Meeting: Delivery review\n"
+        "Arjun asked whether the architecture required exactly-once processing guarantees.\n"
+        "Vikram said exactly-once semantics would significantly increase complexity.\n"
+        "Rhea asked about something unrelated.\n"
+        "He recommended at-least-once delivery with idempotent consumers."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({"requirements": {"requirements": [{
+        "statement": "Exactly-once is not required; at-least-once delivery with idempotent consumers is acceptable.",
+        "lines": [2],
+    }]}})).run(notes)
+    excerpt = outcome.analysis.requirements[0].source_reference.excerpt
+    assert "recommended at-least-once delivery with idempotent consumers" in excerpt
+    assert "unrelated" not in excerpt

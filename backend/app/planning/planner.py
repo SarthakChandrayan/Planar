@@ -53,6 +53,12 @@ _BLANKET_MIN_SHARED_WORDS = 2
 # A word in more than this share of the record's items says nothing about a
 # particular link ("transaction" in a transactions meeting).
 _COMMON_WORD_SHARE = 0.3
+# An item cited by several steps stays only where it matches at least this
+# share of its best-matching step: REQ "threat model" belongs to the
+# threat-model step, not to every step that happens to say "event".
+_LINK_OWNER_SHARE = 0.5
+# A forgotten task this close to an existing step belongs to that step.
+_TASK_STEP_MATCH = 0.6
 
 
 @dataclass
@@ -146,9 +152,20 @@ def _to_domain(
         covered_tasks.update(draft.task_ids)
     _trim_blanket_citations(drafts, decisions, requirements, tasks)
     _trim_unrelated_links(drafts, decisions, requirements, tasks)
+    _keep_links_where_they_belong(drafts, decisions, requirements, tasks)
 
     for task in analysis.tasks:
-        if task.id not in covered_tasks:
+        if task.id in covered_tasks:
+            continue
+        # The model often writes a step for a task but forgets its ID; attach
+        # the task there instead of adding the same step twice.
+        match = _matching_step(task, drafts)
+        if match is not None:
+            logger.info("implementation_plan_attached_uncovered_task id=%s step=%s", task.id, match.title)
+            match.task_ids.append(task.id)
+            if match.when is None and task.due:
+                match.when = task.due
+        else:
             logger.info("implementation_plan_added_uncovered_task id=%s", task.id)
             drafts.append(_task_step(task))
 
@@ -242,6 +259,62 @@ def _trim_blanket_citations(
             )
 
 
+def _step_words(draft: _StepDraft, tasks: dict[str, Task]) -> set[str]:
+    """Words of the step's title and its tasks (description only if it has none)."""
+    if draft.task_ids:
+        text = " ".join([draft.title] + [f"{tasks[t].title} {tasks[t].description}" for t in draft.task_ids])
+    else:
+        text = f"{draft.title} {draft.description}"
+    return word_set(text)
+
+
+def _keep_links_where_they_belong(
+    drafts: list[_StepDraft],
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+    tasks: dict[str, Task],
+) -> None:
+    texts = {**{k: v.statement for k, v in decisions.items()},
+             **{k: v.statement for k, v in requirements.items()}}
+    words = {draft_index: _step_words(d, tasks) for draft_index, d in enumerate(drafts)}
+    citing: dict[str, list[int]] = {}
+    for i, d in enumerate(drafts):
+        for item_id in d.decision_ids + d.requirement_ids:
+            citing.setdefault(item_id, []).append(i)
+
+    for item_id, steps in citing.items():
+        if len(steps) < 2:
+            continue
+        item_words = word_set(texts[item_id])
+        scores = {i: len(words[i] & item_words) for i in steps}
+        best = max(scores.values())
+        if best < 2:
+            continue  # no step clearly owns it
+        for i in steps:
+            d = drafts[i]
+            refs = len(d.decision_ids) + len(d.requirement_ids) + len(d.task_ids)
+            if scores[i] < best * _LINK_OWNER_SHARE and refs > 1:
+                ids = d.decision_ids if item_id in d.decision_ids else d.requirement_ids
+                ids.remove(item_id)
+                logger.info(
+                    "implementation_plan_dropped_weaker_link id=%s step=%s", item_id, d.title
+                )
+
+
+def _matching_step(task: Task, drafts: list[_StepDraft]) -> _StepDraft | None:
+    """The existing step that is clearly this task, if any (best match wins)."""
+    best: tuple[float, _StepDraft] | None = None
+    for draft in drafts:
+        score = max(
+            coverage(task.title, draft.title),
+            coverage(draft.title, task.title),
+            coverage(task.title, f"{draft.title} {draft.description}"),
+        )
+        if score >= _TASK_STEP_MATCH and (best is None or score > best[0]):
+            best = (score, draft)
+    return best[1] if best else None
+
+
 def _trim_unrelated_links(
     drafts: list[_StepDraft],
     decisions: dict[str, Decision],
@@ -270,13 +343,7 @@ def _trim_unrelated_links(
         # Judge by the step's title and its tasks (grounded in the transcript),
         # not its description: the model writes that, and tends to justify its
         # own links in it ("align on deadlines and migration constraints").
-        if draft.task_ids:
-            step_text = " ".join(
-                [draft.title] + [f"{tasks[t].title} {tasks[t].description}" for t in draft.task_ids]
-            )
-        else:
-            step_text = f"{draft.title} {draft.description}"
-        step_words = word_set(step_text)
+        step_words = _step_words(draft, tasks)
         backed_reqs = {r for t in draft.task_ids for r in tasks[t].related_requirement_ids}
 
         def related(item_id: str) -> bool:

@@ -280,3 +280,34 @@ def test_unrelated_links_are_dropped_and_related_ones_kept() -> None:
     assert plan.steps[0].related_requirement_ids == ["REQ-001"]
     assert plan.steps[1].related_requirement_ids == []
     assert plan.steps[1].related_decision_ids == []
+
+
+
+def test_forgotten_task_attaches_to_its_step_instead_of_duplicating_it() -> None:
+    steps = [
+        {"title": "Idempotency middleware", "description": "", "decision_ids": [],
+         "requirement_ids": ["REQ-001"], "task_ids": ["TSK-001"]},
+        # The model wrote the docs step but forgot to cite TSK-002.
+        {"title": "Document decline codes", "description": "For client teams",
+         "decision_ids": [], "requirement_ids": [], "task_ids": []},
+    ]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps, outcomes=[])})).plan(_analysis())
+    titles = [s.title for s in plan.steps]
+    assert titles.count("Document decline codes") == 1
+    assert len(plan.steps) == 2
+    assert plan.steps[1].related_task_ids == ["TSK-002"]
+
+
+def test_item_cited_by_several_steps_stays_where_it_belongs() -> None:
+    analysis = _analysis()
+    steps = [
+        # Strong match: idempotency middleware on charges.
+        {"title": "Idempotency middleware for POST /v1/charges", "description": "",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-001"]},
+        # Weak match: shares only "charges" with REQ-001.
+        {"title": "Document charges decline codes", "description": "",
+         "decision_ids": [], "requirement_ids": ["REQ-001"], "task_ids": ["TSK-002"]},
+    ]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps, outcomes=[])})).plan(analysis)
+    assert plan.steps[0].related_requirement_ids == ["REQ-001"]
+    assert plan.steps[1].related_requirement_ids == []
