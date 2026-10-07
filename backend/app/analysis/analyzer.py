@@ -40,6 +40,8 @@ from app.analysis.grounding import (
     restore_modality,
     is_hedged,
     as_question,
+    is_commitment,
+    is_gate,
     restore_present,
     restore_qualifiers,
     states_rule_without_concern,
@@ -105,6 +107,8 @@ _LINK_MIN_SHARED_WORDS = 2
 _LINK_MIN_OVERLAP = 0.5
 _MAX_LINKS = 2
 # After a question, look this many lines ahead for the answer; quote at most this many.
+# Lines after an open question's evidence that may say it was left open.
+_OPEN_WINDOW = 4
 _ANSWER_WINDOW = 3
 _MAX_ANSWER_LINES = 2
 _MAX_ACCEPTANCE_CRITERIA = 4
@@ -391,9 +395,13 @@ class _RecordBuilder:
         return False
 
     def _add_decision(self, item: ExtractedDecision) -> None:
-        grounding = self._accept("decision", item.statement, item.lines)
+        grounding = self._accept(
+            "decision", item.statement, item.lines, reject=lambda g: self._reject_decision(item.statement, g)
+        )
         if grounding is None:
             return
+        if all(is_question(line.content) for line in grounding.lines):
+            grounding = self._with_answer(grounding, item.statement)
         self.decisions.append(
             Decision(
                 id=format_item_id(DEC_PREFIX, len(self.decisions) + 1),
@@ -428,7 +436,18 @@ class _RecordBuilder:
             )
         )
 
+    def _reject_decision(self, statement: str, grounding: Grounding) -> bool:
+        if any(is_unresolved(line.content) for line in grounding.lines):
+            # "Undecided. ... I'd rather benchmark without Redis first" is not
+            # a decision against Redis.
+            self._drop("decision", statement, "the meeting left this undecided")
+            return True
+        return False
+
     def _reject_requirement(self, statement: str, grounding: Grounding) -> bool:
+        if all(is_commitment(line.content) for line in grounding.lines):
+            self._drop("requirement", statement, "someone took this on as work; it is a task")
+            return True
         if any(
             coverage(statement, d.statement) >= _RESTATED_DECISION_COVERAGE
             for d in self.decisions
@@ -454,7 +473,9 @@ class _RecordBuilder:
             self._drop("risk", description, "an unresolved item, not a risk; kept as an open question")
             self._add_open_question(
                 ExtractedOpenQuestion(
-                    question=grounding.lines[0].content,
+                    question=_sentence_case(
+                        re.sub(r"^(?:so|then|okay|ok|and)\b,?\s*", "", grounding.lines[0].content, flags=re.IGNORECASE)
+                    ),
                     context="Left unresolved in the meeting.",
                     lines=[line.number for line in grounding.lines],
                 )
@@ -470,6 +491,9 @@ class _RecordBuilder:
             answer = self._next_line(grounding)
             if answer is None or not affirms(answer.content):
                 self._drop("risk", description, "only a question, and nobody confirmed it")
+                return True
+            if states_rule_without_concern(_evidence_text(self._with_answer(grounding, description))):
+                self._drop("risk", description, "restates a rule as a risk; nobody raised a concern")
                 return True
         return False
 
@@ -525,7 +549,7 @@ class _RecordBuilder:
         owner = self._owner(item.owner)
         description = item.description.strip() or item.title
         claim = " ".join(part for part in (item.title, description, owner or "") if part)
-        grounding = self._accept("task", claim, item.lines)
+        grounding = self._accept("task", claim, item.lines, reject=lambda g: self._reject_task(claim, g))
         if grounding is None:
             return
         criteria = []
@@ -548,6 +572,15 @@ class _RecordBuilder:
             )
         )
 
+    def _reject_task(self, claim: str, grounding: Grounding) -> bool:
+        evidence = _evidence_text(grounding)
+        if is_gate(evidence) and not is_commitment(evidence):
+            # "No production schema change until the benchmark is reviewed" is
+            # a constraint; nobody took it on as work.
+            self._drop("task", claim, "a constraint on timing, not a piece of work")
+            return True
+        return False
+
     def _add_risk(self, item: ExtractedRisk) -> None:
         grounding = self._accept(
             "risk",
@@ -569,7 +602,9 @@ class _RecordBuilder:
 
     def _add_open_question(self, item: ExtractedOpenQuestion) -> None:
         claim = f"{item.question} {item.context}".strip()
-        grounding = self._accept("open_question", claim, item.lines)
+        grounding = self._accept(
+            "open_question", claim, item.lines, reject=lambda g: self._reject_open_question(claim, g)
+        )
         if grounding is None:
             return
         context = item.context.strip() or grounding.lines[0].content
@@ -581,6 +616,31 @@ class _RecordBuilder:
                 source_reference=self._source(grounding, claim),
             )
         )
+
+    def _reject_open_question(self, claim: str, grounding: Grounding) -> bool:
+        """A question the meeting answered is not open.
+
+        "Are we requiring exactly-once?" ... "At-least-once is sufficient"
+        was settled; an open question needs something left open nearby.
+        """
+        source_lines = {line.source_line for line in grounding.lines}
+        question = word_set(claim.split("?")[0])
+        for other in self.open_questions:
+            if _ref_lines([other.source_reference]) == source_lines and question & word_set(other.question):
+                # Same line, same subject ("thresholds"): the same question.
+                self._drop("open question", claim, "duplicate", duplicate=True)
+                return True
+        last = grounding.lines[-1].number
+        nearby = [line.content for line in grounding.lines]
+        nearby += [
+            line.content
+            for n in range(last + 1, last + 1 + _OPEN_WINDOW)
+            if (line := self._transcript.get(n)) is not None
+        ]
+        if any(is_unresolved(text) for text in nearby):
+            return False
+        self._drop("open question", claim, "the meeting answered it")
+        return True
 
     def _source(self, grounding: Grounding, claim: str) -> SourceReference:
         return _source(grounding, self._grounder, claim)
@@ -662,6 +722,10 @@ def _source(grounding: Grounding, grounder: Grounder, claim: str) -> SourceRefer
         line_end=lines[-1].source_line,
         speaker=speaker,
     )
+
+
+def _sentence_case(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 def _evidence_text(grounding: Grounding) -> str:

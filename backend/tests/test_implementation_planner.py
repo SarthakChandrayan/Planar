@@ -321,3 +321,15 @@ def test_outcome_joining_several_items_is_split_one_per_line() -> None:
     plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, outcomes=outcomes)})).plan(analysis)
     statements = {d.id: d.statement for d in analysis.decisions} | {r.id: r.statement for r in analysis.requirements}
     assert plan.acceptance_criteria[:2] == [statements[ids[0]], statements[ids[1]]]
+
+
+
+def test_summary_sentence_with_a_term_the_meeting_never_used_is_dropped() -> None:
+    from app.planning.planner import _grounded_summary
+
+    record = "Kafka will be introduced for transaction events. Use an outbox for publication."
+    summary = (
+        "This plan implements a migration to Kafka-based event sourcing. "
+        "It introduces Kafka for transaction events."
+    )
+    assert _grounded_summary(summary, record) == "It introduces Kafka for transaction events."

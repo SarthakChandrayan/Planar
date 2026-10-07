@@ -23,7 +23,7 @@ def _analyze(job: Run, context: RunContext) -> tuple[MeetingAnalysis, Implementa
 
 def _replan(job: Run, context: PlanContext, version: int) -> ImplementationPlan:
     context.tokens(1)
-    answer = dict(PLAN, summary=f"Plan version {version}.")
+    answer = dict(PLAN, summary=f"Plan {version}.")
     return ImplementationPlanner(ScriptedLLM({"plan": answer})).plan(job.analysis, progress=context)
 
 
@@ -58,13 +58,13 @@ def test_regenerated_plan_replaces_and_is_saved(finished, tmp_path: Path) -> Non
     run = _wait_plan(manager, run_id)
     assert run.plan_job is None
     assert run.plan_version == 2
-    assert run.plan.summary == "Plan version 2."
+    assert run.plan.summary == "Plan 2."
     assert run.stage_timings[-1].stage == "Implementation plan"
     # Saved: a restarted server sees the new plan.
-    assert RunManager(tmp_path, _analyze).get(run_id).plan.summary == "Plan version 2."
+    assert RunManager(tmp_path, _analyze).get(run_id).plan.summary == "Plan 2."
 
     manager.regenerate_plan(run_id)
-    assert _wait_plan(manager, run_id).plan.summary == "Plan version 3."
+    assert _wait_plan(manager, run_id).plan.summary == "Plan 3."
 
 
 def test_regenerate_rejects_unfinished_or_busy_runs(tmp_path: Path) -> None:
@@ -189,7 +189,7 @@ def test_api_endpoints(finished) -> None:
         _wait_plan(manager, run_id)
 
         report = client.get(f"/api/runs/{run_id}/report.md").text
-        assert "Plan version 2." in report  # downloads use the saved new plan
+        assert "Plan 2." in report  # downloads use the saved new plan
 
         assert client.post("/api/runs/missing/plan").status_code == 404
         assert client.post(f"/api/runs/{run_id}/plan/cancel").status_code == 200

@@ -238,3 +238,75 @@ def test_open_question_worded_as_a_question_ends_with_a_question_mark() -> None:
         "Should Redis be introduced as a deduplication cache?"
     )
     assert as_question("Exact retry intervals remain unresolved.") == "Exact retry intervals remain unresolved."
+
+
+
+def _run(notes: str, answers: dict):
+    return MeetingAnalyzer(ScriptedLLM(answers)).run(notes)
+
+
+def test_answered_question_is_not_an_open_question() -> None:
+    notes = (
+        "Meeting: Delivery\n"
+        "Daniel: Are we requiring exactly-once processing?\n"
+        "Vikram: No. Exactly-once is too expensive.\n"
+        "Arjun: At-least-once delivery with idempotent consumers is sufficient.\n"
+        "Rohan: How long do we keep transaction events?\n"
+        "Arjun: We shouldn't choose retention until legal confirms.\n"
+        "Daniel: Open question."
+    )
+    outcome = _run(notes, {"risks": {"risks": [], "open_questions": [
+        {"question": "Should exactly-once processing be implemented?", "context": "", "lines": [2]},
+        {"question": "How long should transaction events be kept?", "context": "", "lines": [5]},
+    ]}})
+    assert [q.question for q in outcome.analysis.open_questions] == ["How long should transaction events be kept?"]
+
+
+def test_decision_on_an_undecided_line_is_dropped() -> None:
+    notes = (
+        "Meeting: Dedup\n"
+        "Daniel: Is Redis deduplication staying?\n"
+        "Vikram: Undecided. We could use Redis as a fast path.\n"
+        "Arjun: I'd rather benchmark without Redis first."
+    )
+    outcome = _run(notes, {"decisions": {"decisions": [
+        {"statement": "Do not use Redis deduplication for production.", "lines": [3, 4]},
+    ]}})
+    assert outcome.analysis.decisions == []
+
+
+def test_someone_taking_on_work_is_a_task_not_a_requirement() -> None:
+    notes = "Meeting: Tasks\nNeha: I'll document payment idempotency and fraud ordering requirements."
+    outcome = _run(notes, {"requirements": {"requirements": [
+        {"statement": "Payment idempotency and fraud ordering requirements must be documented.", "lines": [2]},
+    ]}})
+    assert outcome.analysis.requirements == []
+
+
+def test_timing_constraint_is_not_a_task() -> None:
+    notes = "Meeting: Gate\nMaya: One final point: no production schema change until the database benchmark is reviewed."
+    outcome = _run(notes, {"tasks": {"tasks": [{
+        "title": "Ensure no production schema change until the benchmark is reviewed",
+        "owner": "Maya", "priority": "high", "acceptance_criteria": ["Benchmark reviewed"], "lines": [2],
+    }]}})
+    assert outcome.analysis.tasks == []
+
+
+def test_should_stays_should_when_another_sentence_says_needs_to() -> None:
+    from app.analysis.grounding import restore_modality
+
+    evidence = (
+        "Default Kafka partitioning should use order_id. If a downstream consumer needs stronger "
+        "ordering, it needs to solve that within its own domain."
+    )
+    assert restore_modality("Kafka partitioning must use order_id as the default key.", evidence) == (
+        "Kafka partitioning should use order_id as the default key."
+    )
+
+
+def test_eventually_consistent_is_not_a_time_qualifier() -> None:
+    from app.analysis.grounding import restore_qualifiers
+
+    claim = "Payment authorization timeout could result in a false payment failure."
+    evidence = "The payment provider itself is eventually consistent. The API timeout doesn't mean payment failed."
+    assert restore_qualifiers(claim, evidence) == claim

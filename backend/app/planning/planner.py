@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -191,7 +192,7 @@ def _to_domain(
     criteria = _outcomes(extracted.outcomes, drafts, decisions, requirements)
     if not criteria:
         criteria = _criteria_from_tasks(drafts, tasks)
-    summary = extracted.summary.strip() or (
+    summary = _grounded_summary(extracted.summary, f"{record_text} {_evidence_text(analysis)}") or (
         f"{len(steps)} implementation steps covering {len(requirements)} requirements "
         f"and {len(tasks)} tasks."
     )
@@ -474,6 +475,43 @@ def _task_step(task: Task) -> _StepDraft:
         task_ids=[task.id],
         when=task.due,
     )
+
+
+# Plain words a summary may use without the meeting saying them.
+_SUMMARY_FILLER = frozenset(
+    """plan plans ensure ensures ensuring implement implements implementing introduce
+    introduces introducing align aligns aligning include includes including key
+    constraint constraints per handling prioritize prioritizes prioritizing secure
+    observable launch launches maintain maintains maintaining deliver delivers
+    delivering cover covers covering support supports supporting while using within
+    migrate migrates migrating post launche evaluation evaluate""".split()
+)
+
+
+def _evidence_text(analysis: MeetingAnalysis) -> str:
+    """What the meeting itself said, as quoted in the record's evidence."""
+    items = [*analysis.decisions, *analysis.requirements, *analysis.risks, *analysis.open_questions]
+    quotes = [item.source_reference.excerpt for item in items]
+    quotes += [ref.excerpt for task in analysis.tasks for ref in task.source_references]
+    return " ".join(quotes)
+
+
+def _grounded_summary(summary: str, record_text: str) -> str:
+    """The model's summary without sentences that bring in new terms.
+
+    "Kafka-based event sourcing" when the meeting never said "event sourcing"
+    names an architecture nobody chose; "compliance requirements" when nobody
+    raised compliance invents a concern.
+    """
+    known = word_set(record_text) | _SUMMARY_FILLER
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", summary.strip()):
+        novel = word_set(sentence) - known
+        if novel:
+            logger.info("implementation_plan_summary_sentence_dropped new_terms=%s", ",".join(sorted(novel)))
+            continue
+        kept.append(sentence)
+    return " ".join(kept).strip()
 
 
 def _record_text(analysis: MeetingAnalysis) -> str:

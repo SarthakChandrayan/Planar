@@ -227,13 +227,16 @@ _FIRM = frozenset("must required require requires mandatory need needs".split())
 _FIRM_PHRASES = ("has to", "have to", "will not", "won't", "cannot", "can't")
 
 
+_PREFERENCE = re.compile(r"\b(?:i|we)(?:'d| would) rather\b|\b(?:i|we) prefer\b", re.IGNORECASE)
+
+
 def is_hedged(text: str) -> bool:
-    """True when a line states an estimate or option rather than an obligation."""
+    """True when a line states an estimate, option or preference, not an obligation."""
     lowered = text.lower()
     words = set(re.findall(r"[a-z']+", lowered))
     if words & _FIRM or any(phrase in lowered for phrase in _FIRM_PHRASES):
         return False
-    return bool(words & _HEDGES)
+    return bool(words & _HEDGES) or bool(_PREFERENCE.search(text))
 
 
 _MONTHS = frozenset(
@@ -329,7 +332,7 @@ def restore_qualifiers(claim: str, evidence: str) -> str:
 
     lowered_claim = claim.lower()
     for word in _TIME_QUALIFIERS:
-        if re.search(rf"\b{word}\b", evidence, re.IGNORECASE) and word not in lowered_claim:
+        if re.search(rf"\b{word}\b(?!\s+consistent)", evidence, re.IGNORECASE) and word not in lowered_claim:
             if coverage(claim, evidence) < 0.5:
                 continue  # the evidence says more than this claim is about
             first, _, rest = claim.partition(" ")
@@ -351,6 +354,7 @@ def restore_modality(claim: str, evidence: str) -> str:
     become "Services must authenticate ...".
     """
     claim = _keep_never(claim, evidence)
+    evidence = _closest_sentence(claim, evidence)
     if not _MUST.search(claim) or not _SHOULD.search(evidence):
         return claim
     words = set(re.findall(r"[a-z']+", evidence.lower()))
@@ -360,6 +364,19 @@ def restore_modality(claim: str, evidence: str) -> str:
 
 
 _NOT_AFTER_MODAL = re.compile(r"\b(must|should|will|shall)\s+not\b", re.IGNORECASE)
+
+
+def _closest_sentence(claim: str, evidence: str) -> str:
+    """The evidence sentence the claim is about.
+
+    "Default partitioning should use order_id. If a consumer needs stronger
+    ordering, it needs to solve that itself": the "needs to" belongs to the
+    second sentence and must not make the first one a "must".
+    """
+    sentences = [s for s in re.split(r"(?<=[.!?;])\s+|\s+…\s+", evidence) if s.strip()]
+    if len(sentences) < 2:
+        return evidence
+    return max(sentences, key=lambda s: coverage(claim, s))
 
 
 def _keep_never(claim: str, evidence: str) -> str:
@@ -414,6 +431,9 @@ _UNRESOLVED = re.compile(
     r"|(?:has|have) not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved|agreed)"
     r"|not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved)"
     r"|remains? (?:unresolved|open|undecided)|undecided|to be (?:decided|determined|confirmed)"
+    r"|remains? to be (?:defined|decided|determined|finalized|confirmed)"
+    r"|still (?:open|needs? to be (?:finalized|defined|decided|determined|confirmed))"
+    r"|open questions?|unresolved|will determine whether|^not yet"
     r"|tbd)\b",
     re.IGNORECASE,
 )
@@ -424,7 +444,23 @@ def is_unresolved(text: str) -> bool:
     return bool(_UNRESOLVED.search(text))
 
 
-_RULE = re.compile(r"\b(?:must|required|requires?|needs? to|has to|have to)\b", re.IGNORECASE)
+_RULE = re.compile(
+    r"\b(?:must|required|requires?|needs?|has to|have to|gate)\b"
+    r"|\b(?:no|not|never)\b[^.]*\buntil\b|n't\b[^.]*\buntil\b",
+    re.IGNORECASE,
+)
+_GATE = re.compile(r"\b(?:no|not|never)\b[^.]*\buntil\b|n't\b[^.]*\buntil\b", re.IGNORECASE)
+_COMMITMENT = re.compile(r"(?:^|[.!?]\s+)(?:I|we)(?:'ll| will)\b", re.IGNORECASE)
+
+
+def is_gate(text: str) -> bool:
+    """A constraint on timing ("no production schema change until X")."""
+    return bool(_GATE.search(text))
+
+
+def is_commitment(text: str) -> bool:
+    """Someone taking on work ("I'll document the requirements")."""
+    return bool(_COMMITMENT.search(text.strip()))
 _CONCERN = re.compile(
     r"\b(?:could|might|may|would|risks?|risky|concerns?|concerned|worr\w*|warn\w*|fail\w*"
     r"|delay\w*|issues?|problems?|unstable|instability|danger\w*|afraid|exposure|exposed?"
