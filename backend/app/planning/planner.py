@@ -39,7 +39,7 @@ _EMPTY_SUMMARY = (
 )
 _MAX_EVIDENCE_PER_STEP = 3
 _MAX_CRITERIA = 20
-_MAX_OUTCOMES = 8
+_MAX_OUTCOMES = 12
 _MAX_WHEN_CHARS = 48
 # An outcome may rephrase the items it cites, but must stay about them.
 _OUTCOME_MIN_COVERAGE = 0.4
@@ -59,6 +59,10 @@ _COMMON_WORD_SHARE = 0.3
 _LINK_OWNER_SHARE = 0.5
 # A forgotten task this close to an existing step belongs to that step.
 _TASK_STEP_MATCH = 0.6
+# A requirement no step cites goes to the step whose words it shares, but only
+# when that step clearly wins; otherwise it is reported as not linked.
+_PLACE_MIN_WORDS = 2
+_PLACE_MARGIN = 2
 
 
 @dataclass
@@ -168,6 +172,7 @@ def _to_domain(
         else:
             logger.info("implementation_plan_added_uncovered_task id=%s", task.id)
             drafts.append(_task_step(task))
+    _place_unlinked_requirements(drafts, decisions, requirements, tasks)
 
     steps = [
         ImplementationPlanStep(
@@ -315,6 +320,61 @@ def _matching_step(task: Task, drafts: list[_StepDraft]) -> _StepDraft | None:
     return best[1] if best else None
 
 
+def _common_words(
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+    tasks: dict[str, Task],
+) -> set[str]:
+    """Words so frequent in this meeting ("kafka", "payment") they link nothing."""
+    item_words = [word_set(d.statement) for d in decisions.values()]
+    item_words += [word_set(r.statement) for r in requirements.values()]
+    item_words += [word_set(f"{t.title} {t.description}") for t in tasks.values()]
+    counts: dict[str, int] = {}
+    for words in item_words:
+        for word in words:
+            counts[word] = counts.get(word, 0) + 1
+    limit = max(2, int(len(item_words) * _COMMON_WORD_SHARE))
+    return {word for word, count in counts.items() if count > limit}
+
+
+def _place_unlinked_requirements(
+    drafts: list[_StepDraft],
+    decisions: dict[str, Decision],
+    requirements: dict[str, Requirement],
+    tasks: dict[str, Task],
+) -> None:
+    """Give a requirement no step cites to the step it clearly belongs to.
+
+    First the step that applies its decision ("payment stays synchronous"
+    from DEC-012 goes where DEC-012 is); else the step that clearly shares its
+    words. Anything left stays unlinked and the report says so.
+    """
+    cited = {r for d in drafts for r in d.requirement_ids}
+    common = _common_words(decisions, requirements, tasks)
+    words = [_step_words(d, tasks) for d in drafts]
+    for req_id, req in requirements.items():
+        if req_id in cited:
+            continue
+        by_decision = {
+            i for i, d in enumerate(drafts) for dec_id in req.related_decision_ids if dec_id in d.decision_ids
+        }
+        target: int | None = None
+        if len(by_decision) == 1:
+            target = by_decision.pop()
+        else:
+            req_words = word_set(req.statement) - common
+            scores = sorted(((len(req_words & w), i) for i, w in enumerate(words)), reverse=True)
+            if scores:
+                best, index = scores[0]
+                runner_up = scores[1][0] if len(scores) > 1 else 0
+                if best >= _PLACE_MIN_WORDS and best - runner_up >= _PLACE_MARGIN:
+                    target = index
+        if target is not None:
+            drafts[target].requirement_ids.append(req_id)
+            drafts[target].requirement_ids.sort()
+            logger.info("implementation_plan_placed_requirement id=%s step=%s", req_id, drafts[target].title)
+
+
 def _trim_unrelated_links(
     drafts: list[_StepDraft],
     decisions: dict[str, Decision],
@@ -330,14 +390,7 @@ def _trim_unrelated_links(
     """
     texts = {**{k: v.statement for k, v in decisions.items()},
              **{k: v.statement for k, v in requirements.items()}}
-    item_words = [word_set(t) for t in texts.values()]
-    item_words += [word_set(f"{t.title} {t.description}") for t in tasks.values()]
-    counts: dict[str, int] = {}
-    for words in item_words:
-        for word in words:
-            counts[word] = counts.get(word, 0) + 1
-    limit = max(2, int(len(item_words) * _COMMON_WORD_SHARE))
-    common = {word for word, count in counts.items() if count > limit}
+    common = _common_words(decisions, requirements, tasks)
 
     for draft in drafts:
         # Judge by the step's title and its tasks (grounded in the transcript),
@@ -464,6 +517,12 @@ def _outcomes(
     for item in extracted:
         cited = [statements[i] for i in item.ids if i in statements]
         if not cited:
+            continue
+        if len(cited) > 1:
+            # "OpenTelemetry will be introduced and consumer groups will have
+            # explicit permissions" joins unrelated items: one per line.
+            for statement in cited:
+                add(statement)
             continue
         source = " ".join(cited)
         text = item.text.strip()

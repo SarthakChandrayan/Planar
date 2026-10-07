@@ -441,6 +441,42 @@ def states_rule_without_concern(text: str) -> bool:
     return bool(_RULE.search(text)) and not _CONCERN.search(text)
 
 
+_ONGOING = re.compile(
+    r"\b(?:is|are)\s+(?:already\s+)?(?:causing|contributing to|leading to|creating|resulting in)\b",
+    re.IGNORECASE,
+)
+_POSSIBLE = re.compile(
+    r"\b(?:could|might|may|can|would)\s+(?:cause|contribute to|lead to|create|result in)\b",
+    re.IGNORECASE,
+)
+
+
+def restore_present(claim: str, evidence: str) -> str:
+    """A problem that is already happening stays present, not "could".
+
+    "Inconsistent policies are contributing to cascading failures" must not
+    become "Inconsistent policies could cause cascading failures".
+    """
+    ongoing = _ONGOING.search(evidence)
+    if ongoing is None or _ONGOING.search(claim):
+        return claim
+    return _POSSIBLE.sub(ongoing.group(0).lower(), claim, count=1)
+
+
+_QUESTION_START = re.compile(
+    r"^(?:should|is|are|was|were|does|do|did|can|could|will|would|what|how|when|where|which|who|why)\b",
+    re.IGNORECASE,
+)
+
+
+def as_question(text: str) -> str:
+    """ "Should Redis be introduced." reads as a question, so it ends with "?"."""
+    text = text.strip()
+    if _QUESTION_START.match(text) and not text.endswith("?"):
+        return text.rstrip(".!") + "?"
+    return text
+
+
 def is_question(text: str) -> bool:
     return bool(_QUESTION.search(text.strip()))
 

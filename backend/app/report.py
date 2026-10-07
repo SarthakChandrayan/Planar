@@ -192,4 +192,9 @@ def plan_map_mermaid(analysis: MeetingAnalysis, plan: ImplementationPlan) -> lis
         out += ["Not tied to a single step; these apply to the plan as a whole:", ""]
         out += [f"- **{d}** {decisions[d].statement}" for d in unlinked]
         out.append("")
+    unplaced = [r for r in requirements if r not in req_ids]
+    if unplaced:
+        out += ["Requirements not linked to any plan step:", ""]
+        out += [f"- **{r}** {requirements[r].statement}" for r in unplaced]
+        out.append("")
     return out

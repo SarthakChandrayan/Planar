@@ -217,3 +217,24 @@ def test_risk_with_a_voiced_concern_next_to_a_rule_is_kept() -> None:
         "severity": "medium", "lines": [2],
     }], "open_questions": []}})).run(notes)
     assert len(outcome.analysis.risks) == 1
+
+
+
+def test_problem_already_happening_is_not_softened_to_could() -> None:
+    from app.analysis.grounding import restore_present
+
+    claim = "Inconsistent timeout and retry policies could cause cascading failures."
+    evidence = "The group agreed that inconsistent timeout and retry policies are contributing to cascading failures."
+    assert restore_present(claim, evidence) == (
+        "Inconsistent timeout and retry policies are contributing to cascading failures."
+    )
+    assert restore_present(claim, "Mehul warned it could cause cascading failures.") == claim
+
+
+def test_open_question_worded_as_a_question_ends_with_a_question_mark() -> None:
+    from app.analysis.grounding import as_question
+
+    assert as_question("Should Redis be introduced as a deduplication cache.") == (
+        "Should Redis be introduced as a deduplication cache?"
+    )
+    assert as_question("Exact retry intervals remain unresolved.") == "Exact retry intervals remain unresolved."

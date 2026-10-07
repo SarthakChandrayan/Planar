@@ -311,3 +311,13 @@ def test_item_cited_by_several_steps_stays_where_it_belongs() -> None:
     plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps, outcomes=[])})).plan(analysis)
     assert plan.steps[0].related_requirement_ids == ["REQ-001"]
     assert plan.steps[1].related_requirement_ids == []
+
+
+
+def test_outcome_joining_several_items_is_split_one_per_line() -> None:
+    analysis = _analysis()
+    ids = [analysis.decisions[0].id, analysis.requirements[0].id]
+    outcomes = [{"text": "Both things will happen.", "ids": ids}]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, outcomes=outcomes)})).plan(analysis)
+    statements = {d.id: d.statement for d in analysis.decisions} | {r.id: r.statement for r in analysis.requirements}
+    assert plan.acceptance_criteria[:2] == [statements[ids[0]], statements[ids[1]]]

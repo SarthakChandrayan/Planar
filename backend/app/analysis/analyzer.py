@@ -39,6 +39,8 @@ from app.analysis.grounding import (
     is_unresolved,
     restore_modality,
     is_hedged,
+    as_question,
+    restore_present,
     restore_qualifiers,
     states_rule_without_concern,
     word_set,
@@ -559,7 +561,7 @@ class _RecordBuilder:
         self.risks.append(
             Risk(
                 id=format_item_id(RSK_PREFIX, len(self.risks) + 1),
-                description=_faithful(item.description, grounding),
+                description=restore_present(_faithful(item.description, grounding), _evidence_text(grounding)),
                 severity=item.severity,
                 source_reference=self._source(grounding, item.description),
             )
@@ -574,7 +576,7 @@ class _RecordBuilder:
         self.open_questions.append(
             OpenQuestion(
                 id=format_item_id(OQ_PREFIX, len(self.open_questions) + 1),
-                question=item.question,
+                question=as_question(item.question),
                 context=context,
                 source_reference=self._source(grounding, claim),
             )

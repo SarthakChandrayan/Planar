@@ -33,7 +33,8 @@ export interface MapEdge {
 export interface PlanGraph {
   columns: Record<MapColumn, MapNode[]>
   edges: MapEdge[]
-  hiddenRequirements: number
+  /** Requirements no plan step covers, so the map can name them. */
+  unlinkedRequirements: { id: string; statement: string }[]
 }
 
 const UNASSIGNED = 'Unassigned'
@@ -169,7 +170,9 @@ export function buildPlanGraph(analysis: MeetingAnalysis, plan: ImplementationPl
       owner: ownerNodes,
     },
     edges,
-    hiddenRequirements: analysis.requirements.length - requirementNodes.length,
+    unlinkedRequirements: analysis.requirements
+      .filter((r) => !requirementOrder.includes(r.id))
+      .map((r) => ({ id: r.id, statement: r.statement })),
   }
 }
 

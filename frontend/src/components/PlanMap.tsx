@@ -145,15 +145,21 @@ export function PlanMap({
         </div>
       </div>
 
-      {graph.hiddenRequirements > 0 ? (
-        <p className="map-footnote">
-          {graph.hiddenRequirements} more{' '}
-          {graph.hiddenRequirements === 1 ? 'requirement is' : 'requirements are'} not covered by
-          any plan step. Faded decisions apply to the plan as a whole.
-        </p>
-      ) : (
-        <p className="map-footnote">Faded decisions apply to the plan as a whole.</p>
-      )}
+      <p className="map-footnote">
+        Faded decisions apply to the plan as a whole.
+        {graph.unlinkedRequirements.length > 0 ? (
+          <>
+            {' '}Not linked to any plan step:{' '}
+            {graph.unlinkedRequirements.map((r, i) => (
+              <span key={r.id}>
+                {i > 0 ? ', ' : ''}
+                <abbr title={r.statement}>{r.id}</abbr>
+              </span>
+            ))}
+            .
+          </>
+        ) : null}
+      </p>
     </section>
   )
 }
