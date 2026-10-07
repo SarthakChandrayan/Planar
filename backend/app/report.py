@@ -187,7 +187,9 @@ def plan_map_mermaid(analysis: MeetingAnalysis, plan: ImplementationPlan) -> lis
         out.append("  end")
     out += [f"  {node(a)} --> {node(b)}" for a, b in edges]
     out += ["```", ""]
-    unlinked = len(decisions) - len(dec_ids)
-    if unlinked > 0:
-        out += [f"_{unlinked} other decision(s) apply to the plan as a whole._", ""]
+    unlinked = [d for d in decisions if d not in dec_ids]
+    if unlinked:
+        out += ["Not tied to a single step; these apply to the plan as a whole:", ""]
+        out += [f"- **{d}** {decisions[d].statement}" for d in unlinked]
+        out.append("")
     return out

@@ -142,9 +142,9 @@ def test_requirement_risk_links_are_mirrored() -> None:
     risks = {
         "risks": [
             {
-                "description": "Clients may not honor the Idempotency-Key header on POST /v1/charges.",
+                "description": "The webhook handler and capture worker could double-charge customers on POST /v1/charges without an Idempotency-Key header.",
                 "severity": "high",
-                "lines": [7],
+                "lines": [14],
             }
         ],
         "open_questions": [],

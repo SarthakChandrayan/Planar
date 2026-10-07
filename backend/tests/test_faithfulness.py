@@ -190,3 +190,30 @@ def test_confirming_reply_is_kept_even_when_other_lines_share_more_words() -> No
     }], "open_questions": []}})).run(notes)
     excerpt = outcome.analysis.risks[0].source_reference.excerpt
     assert "Mehul acknowledged that it could." in excerpt
+
+
+
+def test_risk_that_restates_a_rule_is_dropped() -> None:
+    notes = (
+        "Meeting: Security review\n"
+        "Arjun said the review should focus on access control and event integrity.\n"
+        "The group agreed that the security review must be completed before production traffic is moved to Kafka."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({"risks": {"risks": [{
+        "description": "Security review not completed could expose access control and event integrity issues.",
+        "severity": "high", "lines": [3],
+    }], "open_questions": []}})).run(notes)
+    assert outcome.analysis.risks == []
+    assert any("rule" in d["reason"] for d in outcome.dropped)
+
+
+def test_risk_with_a_voiced_concern_next_to_a_rule_is_kept() -> None:
+    notes = (
+        "Meeting: Load review\n"
+        "Mehul warned that an extra lookup per event must be avoided because it could overload PostgreSQL."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({"risks": {"risks": [{
+        "description": "Extra lookups per event could overload PostgreSQL.",
+        "severity": "medium", "lines": [2],
+    }], "open_questions": []}})).run(notes)
+    assert len(outcome.analysis.risks) == 1

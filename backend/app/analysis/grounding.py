@@ -424,6 +424,23 @@ def is_unresolved(text: str) -> bool:
     return bool(_UNRESOLVED.search(text))
 
 
+_RULE = re.compile(r"\b(?:must|required|requires?|needs? to|has to|have to)\b", re.IGNORECASE)
+_CONCERN = re.compile(
+    r"\b(?:could|might|may|would|risks?|risky|concerns?|concerned|worr\w*|warn\w*|fail\w*"
+    r"|delay\w*|issues?|problems?|unstable|instability|danger\w*|afraid|exposure|exposed?"
+    r"|lag|load|slow\w*|break\w*|lose|losing|loss)\b",
+    re.IGNORECASE,
+)
+
+
+def states_rule_without_concern(text: str) -> bool:
+    """A rule ("the review must be completed before X") with no concern voiced.
+
+    A risk built on it ("if the review is not completed, Y") invents Y.
+    """
+    return bool(_RULE.search(text)) and not _CONCERN.search(text)
+
+
 def is_question(text: str) -> bool:
     return bool(_QUESTION.search(text.strip()))
 

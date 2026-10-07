@@ -40,6 +40,7 @@ from app.analysis.grounding import (
     restore_modality,
     is_hedged,
     restore_qualifiers,
+    states_rule_without_concern,
     word_set,
     shared_words,
     similarity,
@@ -459,6 +460,9 @@ class _RecordBuilder:
             return True
         if asserts_unstated_negative(description, evidence):
             self._drop("risk", description, "claims something is not so; nobody said that")
+            return True
+        if states_rule_without_concern(evidence):
+            self._drop("risk", description, "restates a rule as a risk; nobody raised a concern")
             return True
         if all(is_question(line.content) for line in grounding.lines):
             answer = self._next_line(grounding)
