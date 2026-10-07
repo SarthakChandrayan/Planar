@@ -67,7 +67,7 @@ def _analysis(analysis: MeetingAnalysis) -> list[str]:
         if item.description and item.description != item.title:
             out.append(f"  {item.description}")
         for criterion in item.acceptance_criteria:
-            out.append(f"  - Done when: {criterion}")
+            out.append(f"  - Done when (suggested): {criterion}")
         link = _links("Implements", item.related_requirement_ids)
         if link:
             out.append(link)

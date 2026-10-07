@@ -101,7 +101,12 @@ export function TaskCard({ item }: { item: Task }) {
       <h3 className="item-title">{item.title}</h3>
       {showDescription ? <p className="item-text muted">{item.description}</p> : null}
       {item.acceptance_criteria.length > 0 ? (
-        <ul className="checklist" aria-label="Done when">
+        <p className="checklist-label" title="Written by the model from the task; the meeting did not state these">
+          Suggested done when
+        </p>
+      ) : null}
+      {item.acceptance_criteria.length > 0 ? (
+        <ul className="checklist" aria-label="Suggested done when">
           {item.acceptance_criteria.map((criterion, i) => (
             <li key={`${i}-${criterion}`}>
               <span className="check-box" aria-hidden="true">

@@ -487,10 +487,20 @@ class _RecordBuilder:
         ]
         if not following:
             return grounding
+        # The direct reply comes first when it confirms ("Mehul acknowledged
+        # that it could"), even though it shares no words with the claim.
+        chosen = [following[0]] if affirms(following[0].content) else []
         claim_words = word_set(claim)
-        scored = [(len(claim_words & word_set(line.content)), line) for line in following]
-        best = sorted((s for s in scored if s[0] > 0), key=lambda s: -s[0])[:_MAX_ANSWER_LINES]
-        answer = sorted((line for _, line in best), key=lambda l: l.number) or following[:1]
+        scored = [
+            (len(claim_words & word_set(line.content)), line)
+            for line in following
+            if line not in chosen
+        ]
+        for score, line in sorted(scored, key=lambda s: -s[0]):
+            if score <= 0 or len(chosen) >= _MAX_ANSWER_LINES:
+                break
+            chosen.append(line)
+        answer = sorted(chosen, key=lambda l: l.number) or following[:1]
         return Grounding(grounding.lines + tuple(answer), grounding.score, grounding.reanchored)
 
     def _restates_decisions(self, statement: str, grounding: Grounding) -> bool:

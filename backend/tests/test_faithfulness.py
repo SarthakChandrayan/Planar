@@ -173,3 +173,20 @@ def test_answer_evidence_includes_the_conclusion_not_just_the_next_line() -> Non
     excerpt = outcome.analysis.requirements[0].source_reference.excerpt
     assert "recommended at-least-once delivery with idempotent consumers" in excerpt
     assert "unrelated" not in excerpt
+
+
+
+def test_confirming_reply_is_kept_even_when_other_lines_share_more_words() -> None:
+    notes = (
+        "Meeting: Retry review\n"
+        "Tanya asked whether the retry policy would increase transaction completion time.\n"
+        "Mehul acknowledged that it could.\n"
+        "The maximum retry window must be defined before implementation.\n"
+        "The exact retry policy intervals remain unresolved."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({"risks": {"risks": [{
+        "description": "The retry policy could increase transaction completion time.",
+        "severity": "medium", "lines": [2],
+    }], "open_questions": []}})).run(notes)
+    excerpt = outcome.analysis.risks[0].source_reference.excerpt
+    assert "Mehul acknowledged that it could." in excerpt
