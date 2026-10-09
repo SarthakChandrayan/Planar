@@ -91,7 +91,7 @@ def main() -> None:
     plan = None
     warnings = list(outcome.warnings)
     if not args.no_plan:
-        total = outcome.chunks * 4 + 1
+        total = analyzer.stage_count(transcript) + 1
         progress.stage("Implementation plan", total, total)
         try:
             plan = ImplementationPlanner(llm).plan(outcome.analysis, progress=progress)

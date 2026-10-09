@@ -9,6 +9,7 @@ corrects the rest of the estimate.
 """
 
 import math
+import re
 import statistics
 from collections.abc import Iterable, Sequence
 
@@ -30,6 +31,10 @@ DEFAULT_SECONDS_PER_KTOK: dict[str, float] = {
     "Requirements": 39.0,
     "Tasks": 53.0,
     "Risks & open questions": 26.0,
+    # The second look reuses the cached transcript and writes little.
+    "Decisions · second look": 8.0,
+    "Requirements · second look": 12.0,
+    "Checking decisions": 12.0,
     PLAN_STAGE: 48.0,
 }
 # Short transcripts still pay fixed costs (model load, instructions, output).
@@ -46,9 +51,12 @@ class StageTiming(BaseModel):
     kilotokens: float
 
 
+_PART = re.compile(r"\s·\spart \d+/\d+")
+
+
 def stage_key(label: str) -> str:
-    """'Decisions · part 1/2' -> 'Decisions'."""
-    return label.split(" · ")[0].strip()
+    """'Decisions · part 1/2' -> 'Decisions'; a second look keeps its own key."""
+    return _PART.sub("", label).strip()
 
 
 def chunk_count(transcript_chars: int, chunk_max_tokens: int) -> int:
@@ -61,8 +69,12 @@ def kilotokens_per_chunk(transcript_chars: int, chunks: int) -> float:
     return max(tokens / max(chunks, 1) / 1000, MIN_KTOK)
 
 
-def stage_sequence(chunks: int, include_plan: bool) -> list[str]:
-    stages = [stage for _ in range(chunks) for stage in PASS_STAGES]
+def stage_sequence(
+    chunks: int, include_plan: bool, second_look: bool = True, verify: bool = False
+) -> list[str]:
+    from app.analysis.analyzer import planned_stages
+
+    stages = [stage_key(label) for label in planned_stages(chunks, second_look, verify)]
     if include_plan:
         stages.append(PLAN_STAGE)
     return stages
@@ -88,10 +100,12 @@ class EtaModel:
         rate = self._rates.get(stage, DEFAULT_SECONDS_PER_KTOK.get(stage, 40.0))
         return rate * max(kilotokens, MIN_KTOK)
 
-    def total(self, transcript_chars: int, chunk_max_tokens: int, include_plan: bool) -> float:
+    def total(
+        self, transcript_chars: int, chunk_max_tokens: int, include_plan: bool, second_look: bool = True
+    ) -> float:
         chunks = chunk_count(transcript_chars, chunk_max_tokens)
         ktok = kilotokens_per_chunk(transcript_chars, chunks)
-        return sum(self.expected(s, ktok) for s in stage_sequence(chunks, include_plan))
+        return sum(self.expected(s, ktok) for s in stage_sequence(chunks, include_plan, second_look))
 
     def remaining(
         self,

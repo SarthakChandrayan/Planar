@@ -80,8 +80,10 @@ A task is concrete work someone was asked to do or volunteered for
   work is tied to ("for the October 28 review"), or "".
 - "priority": "high" only if the meeting tied the task to an urgent deadline
   or a launch gate, or called it critical; "low" if optional; else "medium".
-- "acceptance_criteria": 1 or 2 specific, checkable results of the work, using
-  names, numbers and dates from the meeting. Do not restate the title.
+- "acceptance_criteria": 1 or 2 outcomes that show the work is finished and
+  usable, as full statements using the meeting's names and numbers ("All three
+  cases modelled, each with its shortfall charge and net savings"), not a bare
+  noun ("Current run rate") and not the title restated.
 EXAMPLE: {"tasks":[{"title":"Prototype the draft store","description":"Prototype the SQLite draft store with crash-safe writes and share the results with Chen","owner":"Ben","due":"Friday","priority":"high","acceptance_criteria":["Drafts survive the app being killed mid-save"],"lines":[41]}]}
 """.strip()
 
@@ -94,6 +96,8 @@ security or compliance exposure. Look for warnings and concerns: "could",
 "hard to reverse", "if ... then ...". Include risks the meeting decided to
 accept or mitigate, and say what could happen.
 "severity": low, medium, high or critical, from how seriously it was treated.
+Name the system, vendor, plan or team exactly as the meeting did ("the
+monitoring vendor's cheaper plan"), never a broader or different one.
 Only consequences someone actually mentioned; do not add your own ("could lead
 to data loss"). Something still to be decided is an OPEN QUESTION, not a risk.
 An open question is something explicitly left unresolved: to be decided later,
@@ -149,3 +153,31 @@ def build_pass_prompt(
         sections.append(retry_note)
     sections.append("JSON:")
     return "\n\n".join(sections)
+
+
+VERIFY_TASK = """
+TASK: Check each item below against what was actually said. Each item shows
+the meeting lines around it. Judge from ALL the lines shown, especially the
+last thing said about the subject, and give each item a "status":
+- "agreed": the group agreed it, the person running the meeting settled it,
+  or it is a rule or condition the group accepted.
+- "deferred": the group agreed to hold off and decide later ("not yet",
+  "not today", "after we see the analysis").
+- "proposed": one person suggested or preferred it, and it was not agreed:
+  others objected, or it was set aside.
+- "open": the meeting explicitly left it undecided.
+- "assignment": it is work someone was asked to do, not a decision or rule.
+For "deferred" and "open", "question": the decision still to be made, starting
+with "Whether" or "Which". Otherwise "".
+Give one check per item, with the item's id. Compact JSON on one line:
+{"checks":[{"id":"DEC-001","status":"agreed","question":""}]}
+""".strip()
+
+
+def build_verify_prompt(items: Sequence[tuple[str, str, Sequence[str]]]) -> str:
+    """``items``: (id, statement, the transcript lines around its evidence)."""
+    blocks = []
+    for item_id, statement, lines in items:
+        quoted = "\n".join(f"  {line}" for line in lines)
+        blocks.append(f"{item_id}: {statement}\n{quoted}")
+    return VERIFY_TASK + "\n\nITEMS:\n\n" + "\n\n".join(blocks) + "\n\nJSON:"

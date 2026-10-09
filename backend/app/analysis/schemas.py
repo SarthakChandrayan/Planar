@@ -182,3 +182,45 @@ RISKS_QUESTIONS_SCHEMA = _object(
         ["question", "context", "lines"],
     ),
 )
+
+
+# ---------------------------------------------------------------- verify pass
+
+VERIFY_STATUSES = ("agreed", "deferred", "proposed", "open", "assignment")
+
+
+class ExtractedCheck(ExtractionModel):
+    id: str = ""
+    status: str = "agreed"
+    question: str = ""
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _status(cls, value: object) -> object:
+        text = str(value or "").strip().lower()
+        return text if text in VERIFY_STATUSES else "agreed"
+
+
+class VerifyPass(ExtractionModel):
+    checks: list[ExtractedCheck] = Field(default_factory=list)
+
+
+VERIFY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "checks": {
+            "type": "array",
+            "maxItems": 80,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": _STRING,
+                    "status": {"type": "string", "enum": list(VERIFY_STATUSES)},
+                    "question": _STRING,
+                },
+                "required": ["id", "status", "question"],
+            },
+        }
+    },
+    "required": ["checks"],
+}

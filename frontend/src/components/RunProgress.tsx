@@ -5,8 +5,11 @@ import { CheckIcon } from './icons'
 const PASSES = ['Decisions', 'Requirements', 'Tasks', 'Risks & open questions']
 const PLAN = 'Implementation plan'
 
-/** The same stage order the backend runs: four passes per chunk, then the plan. */
+/** The stages the backend will run; older runs without a list get a best guess. */
 function stageLabels(run: Run): string[] {
+  if (run.progress.stages && run.progress.stages.length > 0) {
+    return run.progress.stages
+  }
   const planSteps = run.include_plan ? 1 : 0
   const total = run.progress.total_steps
   const chunks = total > planSteps ? Math.max(1, Math.round((total - planSteps) / 4)) : 1

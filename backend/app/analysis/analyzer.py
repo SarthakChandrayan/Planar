@@ -66,6 +66,8 @@ from app.analysis.schemas import (
     RequirementsPass,
     RisksQuestionsPass,
     TasksPass,
+    VERIFY_SCHEMA,
+    VerifyPass,
 )
 from app.analysis.transcript import NumberedTranscript, TranscriptChunk, TranscriptLine
 from app.domain import (
@@ -137,6 +139,30 @@ _RETRY_TOO_LONG = (
 _SECOND_LOOK_PASSES = frozenset({"decisions", "requirements"})
 
 
+VERIFY_STAGE = "Checking decisions"
+# Lines of context shown on each side of an item's evidence in the check.
+_VERIFY_CONTEXT = 3
+_VERIFY_LINE_CHARS = 260
+
+
+def planned_stages(chunks: int, second_look: bool, verify: bool = False) -> list[str]:
+    """Stage labels in the order MeetingAnalyzer.run reports them.
+
+    The progress screen, the step counter and the time estimate all read this
+    list, so none of them has to guess how many calls a run makes.
+    """
+    labels: list[str] = []
+    for index in range(chunks):
+        for spec in PASSES:
+            label = spec.label if chunks == 1 else f"{spec.label} · part {index + 1}/{chunks}"
+            labels.append(label)
+            if second_look and spec.key in _SECOND_LOOK_PASSES:
+                labels.append(f"{label} · second look")
+    if verify:
+        labels.append(VERIFY_STAGE)
+    return labels
+
+
 @dataclass(frozen=True)
 class _Pass:
     key: str
@@ -185,6 +211,7 @@ class MeetingAnalyzer:
         chunk_max_tokens: int = DEFAULT_CHUNK_MAX_TOKENS,
         max_transcript_chars: int | None = None,
         second_look: bool = False,
+        verify: bool = False,
     ) -> None:
         self._llm = llm
         self._chunk_max_tokens = chunk_max_tokens
@@ -192,15 +219,21 @@ class MeetingAnalyzer:
         # After each pass, show the model what it found and ask only for what
         # it missed. Recall, not precision, is what a small model lacks.
         self._second_look = second_look
+        # After extraction, label each decision and requirement against its
+        # lines (agreed / deferred / proposed / open / assignment) and act on it.
+        self._verify = verify
 
     def analyze(self, transcript: str, progress: Progress | None = None) -> MeetingAnalysis:
         return self.run(transcript, progress).analysis
 
+    def stage_labels(self, transcript: str) -> list[str]:
+        """The stages ``run`` will report, in order (one per model call)."""
+        numbered = NumberedTranscript(transcript.strip())
+        return planned_stages(len(numbered.chunks(self._chunk_max_tokens)), self._second_look, self._verify)
+
     def stage_count(self, transcript: str) -> int:
         """How many model calls (without retries) ``run`` will make."""
-        numbered = NumberedTranscript(transcript.strip())
-        chunks = numbered.chunks(self._chunk_max_tokens)
-        return len(chunks) * self._calls_per_chunk()
+        return len(self.stage_labels(transcript))
 
     def run(
         self,
@@ -221,7 +254,7 @@ class MeetingAnalyzer:
 
         numbered = NumberedTranscript(cleaned)
         chunks = numbered.chunks(self._chunk_max_tokens)
-        total = len(chunks) * self._calls_per_chunk() + extra_stages
+        total = len(planned_stages(len(chunks), self._second_look, self._verify)) + extra_stages
         logger.info(
             "meeting_analysis_started transcript_chars=%d est_tokens=%d chunks=%d speakers=%d",
             len(cleaned),
@@ -255,11 +288,33 @@ class MeetingAnalyzer:
                 if more is not None:
                     builder.add(spec.key, more)
 
+        if self._verify:
+            step += 1
+            progress.stage(VERIFY_STAGE, step, total)
+            self._run_verify(builder, progress)
         return self._finish(builder, chunks)
 
-    def _calls_per_chunk(self) -> int:
-        extra = sum(1 for spec in PASSES if spec.key in _SECOND_LOOK_PASSES) if self._second_look else 0
-        return len(PASSES) + extra
+    def _run_verify(self, builder: "_RecordBuilder", progress: Progress) -> None:
+        items = builder.verify_items()
+        if not items:
+            return
+        prompt = prompts.build_verify_prompt(items)
+        for attempt in (1, 2):
+            try:
+                raw = self._llm.generate(prompt, schema=VERIFY_SCHEMA, on_tokens=progress.tokens)
+                result = VerifyPass.model_validate(parse_json_object(raw))
+            except LLMOutputTruncatedError:
+                logger.warning("analysis_verify_truncated attempt=%d", attempt)
+                continue
+            except LLMProviderError:
+                logger.exception("analysis_verify_llm_failed")
+                raise
+            except (ValueError, ValidationError) as exc:
+                logger.warning("analysis_verify_invalid attempt=%d error=%s", attempt, _first_line(str(exc)))
+                continue
+            builder.apply_checks(result.checks)
+            return
+        builder.warn("The final consistency check could not run; decisions were kept as extracted.")
 
     def _finish(self, builder: "_RecordBuilder", chunks: list[TranscriptChunk]) -> AnalysisOutcome:
         if builder.successful_passes == 0:
@@ -694,6 +749,81 @@ class _RecordBuilder:
         return due if text_mentioned(due, self._transcript.text) else None
 
     # ------------------------------------------------------------------- build
+
+    # ------------------------------------------------------------ verify pass
+
+    def verify_items(self) -> list[tuple[str, str, list[str]]]:
+        """Each decision and requirement with the lines around its evidence."""
+        items = []
+        for item_id, statement, ref in (
+            [(d.id, d.statement, d.source_reference) for d in self.decisions]
+            + [(r.id, r.statement, r.source_reference) for r in self.requirements]
+        ):
+            dense = self._dense_lines(ref)
+            if not dense:
+                continue
+            window = range(min(dense) - _VERIFY_CONTEXT, max(dense) + _VERIFY_CONTEXT + 1)
+            lines = []
+            for n in window:
+                line = self._transcript.get(n)
+                if line is not None:
+                    text = line.text if len(line.text) <= _VERIFY_LINE_CHARS else line.text[:_VERIFY_LINE_CHARS] + "…"
+                    lines.append(f"L{line.source_line} {text}")
+            items.append((item_id, statement, lines))
+        return items
+
+    def apply_checks(self, checks: list[Any]) -> None:
+        """Act on the verify labels: drop proposals and assignments, move open
+        items to open questions, and add deferred ones as open questions too."""
+        by_id = {c.id.strip().upper(): c for c in checks}
+        kept_decisions = [d for d in self.decisions if self._apply_check("decision", d.statement, d.source_reference, by_id.get(d.id))]
+        kept_requirements = [r for r in self.requirements if self._apply_check("requirement", r.statement, r.source_reference, by_id.get(r.id))]
+        self.decisions = [d.model_copy(update={"id": format_item_id(DEC_PREFIX, i)}) for i, d in enumerate(kept_decisions, 1)]
+        self.requirements = [r.model_copy(update={"id": format_item_id(REQ_PREFIX, i)}) for i, r in enumerate(kept_requirements, 1)]
+
+    def _apply_check(self, kind: str, statement: str, ref: SourceReference, check: Any) -> bool:
+        if check is None or check.status == "agreed":
+            return True
+        if check.status == "proposed":
+            self._drop(kind, statement, "only proposed; the meeting did not agree it")
+            return False
+        if check.status == "assignment":
+            self._drop(kind, statement, "work someone was asked to do; it is a task")
+            return False
+        question = check.question.strip()
+        if check.status == "open":
+            self._drop(kind, statement, "the meeting left this undecided; kept as an open question")
+            self._question_from(question or statement, "Left undecided in the meeting.", ref)
+            return False
+        # deferred: the "not yet" stands, and the decision is still to be made.
+        if question:
+            self._question_from(question, "Deferred until the analysis is reviewed.", ref)
+        return True
+
+    def _question_from(self, question: str, context: str, ref: SourceReference) -> None:
+        dense = self._dense_lines(ref)
+        grounding = self._grounder.ground(question, dense[:2]) if dense else None
+        if grounding is None:
+            self._drop("open question", question, "no line in the transcript supports it")
+            return
+        if self._is_duplicate(question, grounding, self._seen["open_question"]):
+            self._drop("open question", question, "duplicate", duplicate=True)
+            return
+        self._seen["open_question"].append((question, grounding))
+        self.open_questions.append(
+            OpenQuestion(
+                id=format_item_id(OQ_PREFIX, len(self.open_questions) + 1),
+                question=as_question(question),
+                context=context,
+                source_reference=ref,
+            )
+        )
+
+    def _dense_lines(self, ref: SourceReference) -> list[int]:
+        if ref.line_start is None:
+            return []
+        end = ref.line_end or ref.line_start
+        return [line.number for line in self._transcript.lines if ref.line_start <= line.source_line <= end]
 
     def build(self) -> MeetingAnalysis:
         decs = [_target(d.id, d.statement, [d.source_reference]) for d in self.decisions]

@@ -46,6 +46,7 @@ def build_analyzer(llm: LLMProvider, settings: Settings) -> MeetingAnalyzer:
         chunk_max_tokens=settings.chunk_max_tokens,
         max_transcript_chars=settings.max_transcript_chars,
         second_look=settings.analysis_second_look,
+        verify=settings.analysis_verify,
     )
 
 
@@ -55,6 +56,8 @@ def build_runner(settings: Settings) -> Runner:
     def run(job: Run, context: RunContext) -> tuple[MeetingAnalysis, ImplementationPlan | None]:
         llm = build_provider(settings)
         analyzer = build_analyzer(llm, settings)
+        stages = analyzer.stage_labels(job.transcript) + (["Implementation plan"] if job.include_plan else [])
+        context.plan_stages(stages)
         extra = 1 if job.include_plan else 0
         outcome = analyzer.run(job.transcript, context, extra_stages=extra)
         for warning in outcome.warnings:
@@ -63,8 +66,7 @@ def build_runner(settings: Settings) -> Runner:
         if not job.include_plan:
             return outcome.analysis, None
 
-        total = outcome.chunks * 4 + 1
-        context.stage("Implementation plan", total, total)
+        context.stage("Implementation plan", len(stages), len(stages))
         try:
             plan = ImplementationPlanner(llm).plan(
                 outcome.analysis, title=job.title, progress=context

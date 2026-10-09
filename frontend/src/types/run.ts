@@ -4,6 +4,8 @@ import type { ImplementationPlan } from './plan'
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
 export interface RunProgress {
+  /** Every stage the run will go through, in order (empty for older runs). */
+  stages?: string[]
   stage: string
   step: number
   total_steps: number

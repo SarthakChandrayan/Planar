@@ -43,10 +43,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--name", required=True, help="results folder under data/eval")
     parser.add_argument("--no-second-look", action="store_true", help="skip the second look")
+    parser.add_argument("--verify", action="store_true", help="run the decision/requirement check")
     parser.add_argument("--only", action="append", help="key file stem(s) to run")
     args = parser.parse_args()
 
-    settings = get_settings().model_copy(update={"analysis_second_look": not args.no_second_look})
+    settings = get_settings().model_copy(update={"analysis_second_look": not args.no_second_look, "analysis_verify": args.verify})
     configure_logging("WARNING", settings.log_format)
     llm = build_provider(settings)
     llm.check_ready()

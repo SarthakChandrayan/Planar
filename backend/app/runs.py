@@ -49,6 +49,8 @@ _FINISHED = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 
 
 class RunProgress(BaseModel):
+    # Every stage the run will go through, in order, set when it starts.
+    stages: list[str] = Field(default_factory=list)
     stage: str = "Queued"
     step: int = 0
     total_steps: int = 0
@@ -139,6 +141,9 @@ class RunContext:
         self.check_cancelled()
         self._manager._update_progress(self._run_id, tokens=count)
 
+    def plan_stages(self, labels: list[str]) -> None:
+        self._manager._set_stages(self._run_id, labels)
+
     def warn(self, message: str) -> None:
         self._manager._add_warning(self._run_id, message)
 
@@ -184,12 +189,14 @@ class RunManager:
         error_message: ErrorMessage = str,
         chunk_max_tokens: int = _DEFAULT_CHUNK_MAX_TOKENS,
         plan_runner: PlanRunner | None = None,
+        second_look: bool = True,
     ) -> None:
         self._dir = runs_dir
         self._runner = runner
         self._plan_runner = plan_runner
         self._error_message = error_message
         self._chunk_max_tokens = chunk_max_tokens
+        self._second_look = second_look
         self._lock = threading.Lock()
         self._runs: dict[str, Run] = {}
         self._stage_started: dict[str, float] = {}
@@ -286,7 +293,7 @@ class RunManager:
     def estimate(self, transcript_chars: int, include_plan: bool = True) -> Estimate:
         """How long a transcript of this size should take on this machine."""
         with self._lock:
-            seconds = self._eta.total(transcript_chars, self._chunk_max_tokens, include_plan)
+            seconds = self._eta.total(transcript_chars, self._chunk_max_tokens, include_plan, self._second_look)
             return Estimate(
                 seconds=round(seconds),
                 chunks=chunk_count(transcript_chars, self._chunk_max_tokens),
@@ -453,6 +460,13 @@ class RunManager:
                 progress.total_tokens += max(tokens - progress.stage_tokens, 0)
                 progress.stage_tokens = tokens
 
+    def _set_stages(self, run_id: str, labels: "list[str]") -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None:
+                run.progress.stages = list(labels)
+                run.progress.total_steps = len(labels)
+
     def _add_warning(self, run_id: str, message: str) -> None:
         with self._lock:
             run = self._runs.get(run_id)
@@ -501,6 +515,8 @@ class RunManager:
     # ----------------------------------------------------------------- timing
 
     def _chunks_of(self, run: Run) -> int:
+        if run.progress.stages:
+            return max(1, sum(1 for label in run.progress.stages if stage_key(label) == "Decisions"))
         plan_steps = 1 if run.include_plan else 0
         if run.progress.total_steps > plan_steps:
             return max(1, (run.progress.total_steps - plan_steps) // 4)
@@ -538,7 +554,9 @@ class RunManager:
         view = run.model_copy(deep=True)
         if run.status == RunStatus.QUEUED:
             view.progress.eta_seconds = round(
-                self._eta.total(run.transcript_chars, self._chunk_max_tokens, run.include_plan)
+                self._eta.total(
+                    run.transcript_chars, self._chunk_max_tokens, run.include_plan, self._second_look
+                )
             )
         elif run.status == RunStatus.RUNNING:
             chunks = self._chunks_of(run)
@@ -546,7 +564,8 @@ class RunManager:
             elapsed = time.monotonic() - started if started is not None else 0.0
             view.progress.eta_seconds = round(
                 self._eta.remaining(
-                    stage_sequence(chunks, run.include_plan),
+                    [stage_key(s) for s in run.progress.stages]
+                    or stage_sequence(chunks, run.include_plan, self._second_look),
                     run.progress.step - 1,
                     elapsed,
                     kilotokens_per_chunk(run.transcript_chars, chunks),

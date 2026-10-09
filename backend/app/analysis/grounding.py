@@ -506,7 +506,7 @@ def restore_present(claim: str, evidence: str) -> str:
 
 
 _QUESTION_START = re.compile(
-    r"^(?:should|is|are|was|were|does|do|did|can|could|will|would|what|how|when|where|which|who|why)\b",
+    r"^(?:should|is|are|was|were|does|do|did|can|could|will|would|what|how|when|where|which|who|why|whether)\b",
     re.IGNORECASE,
 )
 

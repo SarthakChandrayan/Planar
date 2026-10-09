@@ -466,3 +466,19 @@ def test_second_look_covers_decisions_and_requirements_only() -> None:
     MeetingAnalyzer(llm, second_look=True).analyze(PAYMENT_MEETING_TRANSCRIPT)
     assert any("SECOND LOOK" in p for p in llm.prompts_for("decisions"))
     assert not any("SECOND LOOK" in p for p in llm.prompts_for("tasks"))
+
+
+def test_published_stage_list_matches_the_stages_actually_run() -> None:
+    reported: list[str] = []
+
+    class Recorder:
+        def stage(self, label: str, step: int, total: int) -> None:
+            reported.append(label)
+
+        def tokens(self, count: int) -> None:
+            pass
+
+    analyzer = MeetingAnalyzer(_full_llm(), second_look=True)
+    analyzer.run(PAYMENT_MEETING_TRANSCRIPT, Recorder())
+    assert reported == analyzer.stage_labels(PAYMENT_MEETING_TRANSCRIPT)
+    assert "Decisions · second look" in reported

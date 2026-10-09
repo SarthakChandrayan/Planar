@@ -102,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_message=error_message,
             chunk_max_tokens=settings.chunk_max_tokens,
             plan_runner=build_plan_runner(settings),
+            second_look=settings.analysis_second_look,
         )
         manager.start()
         app.state.run_manager = manager

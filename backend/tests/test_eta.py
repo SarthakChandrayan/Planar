@@ -34,10 +34,18 @@ def test_tiny_transcripts_still_pay_fixed_costs() -> None:
 
 
 def test_stage_sequence_and_keys() -> None:
-    assert stage_sequence(2, True)[-1] == PLAN_STAGE
-    assert len(stage_sequence(2, True)) == 9
-    assert len(stage_sequence(1, False)) == 4
+    assert stage_sequence(2, True, second_look=False)[-1] == PLAN_STAGE
+    assert len(stage_sequence(2, True, second_look=False)) == 9
+    assert len(stage_sequence(1, False, second_look=False)) == 4
     assert stage_key("Tasks · part 2/3") == "Tasks"
+
+
+def test_second_look_stages_are_planned_and_timed_separately() -> None:
+    stages = stage_sequence(2, True)
+    # Per part: four passes plus a second look at decisions and requirements.
+    assert len(stages) == 2 * 6 + 1
+    assert stages[:4] == ["Decisions", "Decisions · second look", "Requirements", "Requirements · second look"]
+    assert stage_key("Decisions · part 1/2 · second look") == "Decisions · second look"
 
 
 def test_history_replaces_defaults() -> None:
@@ -51,7 +59,7 @@ def test_history_replaces_defaults() -> None:
 
 def test_remaining_counts_down_and_adapts_to_speed() -> None:
     model = EtaModel()
-    stages = stage_sequence(1, True)
+    stages = stage_sequence(1, True, second_look=False)
     ktok = 2.0
     at_start = model.remaining(stages, 0, 0, ktok, [])
     later = model.remaining(stages, 0, 30, ktok, [])
@@ -65,12 +73,12 @@ def test_remaining_counts_down_and_adapts_to_speed() -> None:
 
 def test_overrunning_stage_never_shows_zero() -> None:
     model = EtaModel()
-    stages = stage_sequence(1, False)
+    stages = stage_sequence(1, False, second_look=False)
     assert model.remaining(stages, 3, 10_000, 2.0, []) >= 15
 
 
 def _runner(job: Run, context: RunContext):
-    for step, stage in enumerate(stage_sequence(1, True), start=1):
+    for step, stage in enumerate(stage_sequence(1, True, second_look=False), start=1):
         context.stage(stage, step, 5)
     return MeetingAnalysis(), None
 
@@ -85,7 +93,7 @@ def test_runs_record_stage_timings_and_report_eta(tmp_path: Path) -> None:
     run = manager.wait(queued.id, timeout=5)
     manager.stop()
 
-    assert [t.stage for t in run.stage_timings] == stage_sequence(1, True)
+    assert [t.stage for t in run.stage_timings] == stage_sequence(1, True, second_look=False)
     assert run.progress.eta_seconds is None
     # The finished run now informs estimates, and survives a restart.
     assert manager.estimate(2200).basis == "this machine"
