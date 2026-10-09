@@ -63,11 +63,20 @@ def test_proposals_and_assignments_go_open_and_deferred_become_questions() -> No
     assert "task" in reasons["The travel budget must be split by Tuesday."]
 
 
-def test_the_check_sees_the_lines_around_each_item() -> None:
+def test_the_check_reuses_the_cached_transcript_and_lists_items_by_line() -> None:
     llm, _, _ = _run(verify=True)
-    prompt = llm.prompts_for("checks")[0]
-    block = prompt.split("DEC-001: Do not cut the conference entirely.")[1].split("DEC-002")[0]
-    assert "We're not deciding that now" in block  # two lines after the cited one
+    check = llm.prompts_for("checks")[0]
+    first_pass = llm.prompts_for("decisions")[0]
+    prefix = first_pass.split("END OF TRANSCRIPT")[0]
+    assert check.startswith(prefix)  # same prefix: Ollama's cache is reused
+    assert "DEC-001 (L2): Do not cut the conference entirely." in check
+
+
+def test_split_meetings_show_the_lines_around_each_item() -> None:
+    from app.analysis.prompts import build_verify_prompt
+
+    prompt = build_verify_prompt([("DEC-001", "Do not cut the conference.", ["L2 Sameer: cut it", "L4 Priya: not deciding now"])])
+    assert "DEC-001: Do not cut the conference.\n  L2 Sameer: cut it\n  L4 Priya: not deciding now" in prompt
 
 
 def test_verify_stage_is_planned_and_reported() -> None:
@@ -91,3 +100,17 @@ def test_unusable_check_keeps_everything_and_warns() -> None:
     outcome = MeetingAnalyzer(llm, verify=True).run(NOTES)
     assert len(outcome.analysis.decisions) == 3
     assert any("consistency check" in w for w in outcome.warnings)
+
+
+def test_a_deferred_requirement_stays_a_condition_not_a_question() -> None:
+    llm = ScriptedLLM({
+        "requirements": {"requirements": [
+            {"statement": "The support contract must include guaranteed surge capacity.", "lines": [6]},
+        ]},
+        "checks": {"checks": [
+            {"id": "REQ-001", "status": "deferred", "question": "Whether to require surge capacity"},
+        ]},
+    })
+    outcome = MeetingAnalyzer(llm, verify=True).run(NOTES)
+    assert len(outcome.analysis.requirements) == 1
+    assert outcome.analysis.open_questions == []

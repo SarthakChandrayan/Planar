@@ -156,15 +156,16 @@ def build_pass_prompt(
 
 
 VERIFY_TASK = """
-TASK: Check each item below against what was actually said. Each item shows
-the meeting lines around it. Judge from ALL the lines shown, especially the
-last thing said about the subject, and give each item a "status":
+TASK: Check each item below against what was actually said. Each item gives
+the lines it came from; read those lines and the discussion around them, and
+judge from the last thing said about the subject. Give each item a "status":
 - "agreed": the group agreed it, the person running the meeting settled it,
   or it is a rule or condition the group accepted.
 - "deferred": the group agreed to hold off and decide later ("not yet",
   "not today", "after we see the analysis").
 - "proposed": one person suggested or preferred it, and it was not agreed:
-  others objected, or it was set aside.
+  others objected, or it was set aside. If someone else agreed ("Correct",
+  "Agreed", "Yes") and nobody objected, it is "agreed", not "proposed".
 - "open": the meeting explicitly left it undecided.
 - "assignment": it is work someone was asked to do, not a decision or rule.
 For "deferred" and "open", "question": the decision still to be made, starting
@@ -174,8 +175,23 @@ Give one check per item, with the item's id. Compact JSON on one line:
 """.strip()
 
 
+def build_verify_prompt_cached(
+    chunk: TranscriptChunk, items: Sequence[tuple[str, str, Sequence[int]]]
+) -> str:
+    """The check for a one-chunk meeting: same transcript prefix as the passes,
+    so Ollama reuses its cache and only reads the short list of items."""
+    rows = []
+    for item_id, statement, lines in items:
+        cited = f"L{lines[0]}" if len(lines) == 1 else f"L{lines[0]}-L{lines[-1]}"
+        rows.append(f"{item_id} ({cited}): {statement}")
+    return "\n\n".join(
+        [transcript_block(chunk, 1), VERIFY_TASK, "ITEMS:\n" + "\n".join(rows), "JSON:"]
+    )
+
+
 def build_verify_prompt(items: Sequence[tuple[str, str, Sequence[str]]]) -> str:
-    """``items``: (id, statement, the transcript lines around its evidence)."""
+    """For a meeting split into chunks: each item with the lines around it.
+    ``items``: (id, statement, the transcript lines around its evidence)."""
     blocks = []
     for item_id, statement, lines in items:
         quoted = "\n".join(f"  {line}" for line in lines)

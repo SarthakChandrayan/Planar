@@ -291,14 +291,23 @@ class MeetingAnalyzer:
         if self._verify:
             step += 1
             progress.stage(VERIFY_STAGE, step, total)
-            self._run_verify(builder, progress)
+            self._run_verify(builder, progress, chunks)
         return self._finish(builder, chunks)
 
-    def _run_verify(self, builder: "_RecordBuilder", progress: Progress) -> None:
-        items = builder.verify_items()
-        if not items:
-            return
-        prompt = prompts.build_verify_prompt(items)
+    def _run_verify(
+        self, builder: "_RecordBuilder", progress: Progress, chunks: list[TranscriptChunk]
+    ) -> None:
+        if len(chunks) == 1:
+            # Reuse the transcript Ollama already has cached from the passes.
+            refs = builder.verify_refs()
+            if not refs:
+                return
+            prompt = prompts.build_verify_prompt_cached(chunks[0], refs)
+        else:
+            items = builder.verify_items()
+            if not items:
+                return
+            prompt = prompts.build_verify_prompt(items)
         for attempt in (1, 2):
             try:
                 raw = self._llm.generate(prompt, schema=VERIFY_SCHEMA, on_tokens=progress.tokens)
@@ -752,6 +761,18 @@ class _RecordBuilder:
 
     # ------------------------------------------------------------ verify pass
 
+    def verify_refs(self) -> list[tuple[str, str, list[int]]]:
+        """Each decision and requirement with the (numbered) lines it cites."""
+        refs = []
+        for item_id, statement, ref in (
+            [(d.id, d.statement, d.source_reference) for d in self.decisions]
+            + [(r.id, r.statement, r.source_reference) for r in self.requirements]
+        ):
+            dense = self._dense_lines(ref)
+            if dense:
+                refs.append((item_id, statement, [min(dense), max(dense)] if len(dense) > 1 else dense))
+        return refs
+
     def verify_items(self) -> list[tuple[str, str, list[str]]]:
         """Each decision and requirement with the lines around its evidence."""
         items = []
@@ -796,7 +817,9 @@ class _RecordBuilder:
             self._question_from(question or statement, "Left undecided in the meeting.", ref)
             return False
         # deferred: the "not yet" stands, and the decision is still to be made.
-        if question:
+        # A deferred requirement ("confirm the expiry date before committing")
+        # is a condition on that decision, not a separate question.
+        if question and kind == "decision":
             self._question_from(question, "Deferred until the analysis is reviewed.", ref)
         return True
 
