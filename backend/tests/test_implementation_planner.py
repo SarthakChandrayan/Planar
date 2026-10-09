@@ -320,3 +320,12 @@ def test_plan_is_done_when_its_tasks_are_done_not_when_decisions_are_restated() 
     assert all(c in task_criteria for c in plan.acceptance_criteria)
     assert not decisions & set(plan.acceptance_criteria)
 
+
+def test_a_one_task_step_keeps_the_tasks_own_description() -> None:
+    analysis = _analysis()
+    task = analysis.tasks[0]
+    steps = [{"title": "Do the work", "description": "Do it after some session nobody mentioned.",
+              "when": "", "decision_ids": [], "requirement_ids": [], "task_ids": [task.id]}]
+    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, steps=steps)})).plan(analysis)
+    assert plan.steps[0].description == task.description
+

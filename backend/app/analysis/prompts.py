@@ -40,8 +40,9 @@ for this release", "agreed").
 Include negative decisions (a rejected option, a non-goal): start them with
 "Do not" and name exactly what was rejected, in the meeting's own words.
 NOT decisions: proposals nobody accepted, one person's preference that others
-pushed back on, ideas, "we could", open debates, and anything the meeting said
-it is not deciding yet.
+pushed back on, ideas, "we could", open debates, anything the meeting said it
+is not deciding yet, and anything marked as needing further discussion,
+investigation or review (those are open questions).
 EXAMPLE: {"decisions":[{"statement":"Use SQLite for local drafts.","lines":[12]}]}
 """.strip()
 
@@ -101,7 +102,8 @@ monitoring vendor's cheaper plan"), never a broader or different one.
 Only consequences someone actually mentioned; do not add your own ("could lead
 to data loss"). Something still to be decided is an OPEN QUESTION, not a risk.
 An open question is something explicitly left unresolved: to be decided later,
-or to be answered by someone not present. Questions answered during the
+to be answered by someone not present, or marked as needing further
+discussion, investigation or review (including in written meeting notes). Questions answered during the
 meeting are NOT open questions.
 "context": one short sentence on why the question matters.
 EXAMPLE: {"risks":[{"description":"Wrong device clocks could overwrite newer edits.","severity":"high","lines":[33]}],"open_questions":[{"question":"Does the web app need offline mode?","context":"Sales keeps asking.","lines":[52]}]}

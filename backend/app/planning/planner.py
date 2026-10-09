@@ -176,7 +176,7 @@ def _to_domain(
         ImplementationPlanStep(
             id=format_item_id(STEP_PREFIX, index),
             title=draft.title,
-            description=draft.description,
+            description=_step_description(draft, tasks),
             related_decision_ids=draft.decision_ids,
             related_requirement_ids=draft.requirement_ids,
             related_task_ids=draft.task_ids,
@@ -463,6 +463,18 @@ def _ground_step(
         logger.warning("implementation_plan_dropped_step_without_references")
         return None
     return draft
+
+
+def _step_description(draft: _StepDraft, tasks: dict[str, Task]) -> str:
+    """A step that carries one task says what the task says.
+
+    The model's own description tends to add links the meeting never made
+    ("retest the features after the payment session" for "retest them right
+    after the meeting"). A step with several tasks keeps the model's summary.
+    """
+    if len(draft.task_ids) == 1 and draft.task_ids[0] in tasks:
+        return tasks[draft.task_ids[0]].description
+    return draft.description
 
 
 def _task_step(task: Task) -> _StepDraft:
