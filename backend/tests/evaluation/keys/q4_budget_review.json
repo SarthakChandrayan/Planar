@@ -1,0 +1,807 @@
+{
+ "name": "Q4 Budget Review — Growth, Hiring & Infrastructure",
+ "match_title": "Q4 Budget Review",
+ "transcript": "samples/q4_budget_review.txt",
+ "items": [
+  {
+   "id": "D-baseline",
+   "text": "Keep the approved Q4 budget of ₹1.75 crore as the control baseline",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    20,
+    208
+   ]
+  },
+  {
+   "id": "D-not-approving",
+   "text": "Not approving today the additional campaign spend, the annual cloud commitment, the six-month support contract or the full hiring plan",
+   "categories": [
+    "decision"
+   ],
+   "lines": [
+    208,
+    96
+   ]
+  },
+  {
+   "id": "D-first-tranche",
+   "text": "The two immediate engineering hires are modeled as the proposed first hiring tranche, pending review of the revised forecast",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    82,
+    96,
+    208
+   ]
+  },
+  {
+   "id": "D-no-campaign-approval",
+   "text": "No one is approving either campaign budget today",
+   "categories": [
+    "decision"
+   ],
+   "lines": [
+    64
+   ]
+  },
+  {
+   "id": "D-no-cloud-signing",
+   "text": "Not signing the cloud commitment today",
+   "categories": [
+    "decision"
+   ],
+   "lines": [
+    118,
+    122,
+    124
+   ]
+  },
+  {
+   "id": "D-no-support-contract",
+   "text": "Do not sign the six-month support contract yet",
+   "categories": [
+    "decision"
+   ],
+   "lines": [
+    146
+   ]
+  },
+  {
+   "id": "D-no-downgrade",
+   "text": "Do not downgrade the monitoring plan until Security confirms retention requirements and the vendor clarifies overage terms",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    160
+   ]
+  },
+  {
+   "id": "D-no-shutdown-yet",
+   "text": "Do not implement scheduled staging shutdowns yet",
+   "categories": [
+    "decision"
+   ],
+   "lines": [
+    34
+   ]
+  },
+  {
+   "id": "R-separate-savings",
+   "text": "Separate committed spend, forecast spend and potential savings; a potential saving does not reduce the approved budget until confirmed and decided",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    162,
+    164
+   ]
+  },
+  {
+   "id": "R-gap-provisional",
+   "text": "The ₹19 lakh difference is provisional, not the final overspend",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    188,
+    190,
+    192
+   ]
+  },
+  {
+   "id": "R-cloud-not-saving",
+   "text": "The cloud discount is not counted as a saving until the minimum-spend analysis is complete",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    194,
+    196
+   ]
+  },
+  {
+   "id": "R-tranche-not-approved",
+   "text": "The second campaign tranche is not approved yet",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    198,
+    200
+   ]
+  },
+  {
+   "id": "R-deferral",
+   "text": "Deferred hires are under review, not cancelled; deferral is not cancellation",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    202,
+    204
+   ]
+  },
+  {
+   "id": "R-cash-vs-expense",
+   "text": "Budget comparison distinguishes cash paid from expense recognized",
+   "categories": [
+    "requirement",
+    "task"
+   ],
+   "lines": [
+    180,
+    182,
+    184
+   ]
+  },
+  {
+   "id": "R-mark-status",
+   "text": "Mark each item as committed, proposed or unresolved; do not turn proposed savings into approved reductions",
+   "categories": [
+    "requirement",
+    "task"
+   ],
+   "lines": [
+    212
+   ]
+  },
+  {
+   "id": "R-net-revenue",
+   "text": "Campaign measured on net revenue after refunds",
+   "categories": [
+    "requirement"
+   ],
+   "lines": [
+    60,
+    62
+   ],
+   "strength": "should"
+  },
+  {
+   "id": "R-tranche-release",
+   "text": "Release the second ₹8 lakh tranche only if early conversion metrics are good, after a first week with ₹10 lakh committed",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    54,
+    56
+   ],
+   "optional": true
+  },
+  {
+   "id": "R-no-full-hiring",
+   "text": "Full six-role hiring plan not approved until the revised hiring model and sales capacity numbers are seen",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    96
+   ]
+  },
+  {
+   "id": "R-analysis-before-commit",
+   "text": "Cloud spend analysis required before any commitment",
+   "categories": [
+    "requirement",
+    "decision"
+   ],
+   "lines": [
+    118
+   ],
+   "optional": true
+  },
+  {
+   "id": "T-dev-reconcile",
+   "text": "Reconcile the two forecast versions, with separate cash and P&L columns, and circulate it tomorrow afternoon",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    20,
+    22,
+    184,
+    186,
+    210
+   ],
+   "owner": "Dev"
+  },
+  {
+   "id": "T-dev-procurement",
+   "text": "Message procurement for the renewal schedule",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    22
+   ],
+   "owner": "Dev",
+   "optional": true
+  },
+  {
+   "id": "T-karan-shutdown",
+   "text": "Ask the platform team to estimate savings from scheduled shutdowns and testing dependencies, by Tuesday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    34,
+    36
+   ],
+   "owner": "Karan"
+  },
+  {
+   "id": "T-meera-options",
+   "text": "Prepare the ₹18 lakh and ₹15 lakh campaign options with assumptions, tranche release conditions and refund-adjusted measurement, by Monday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    64
+   ],
+   "owner": "Meera"
+  },
+  {
+   "id": "T-ananya-hiring",
+   "text": "Update the hiring forecast for two immediate engineering hires and the cash impact of deferring the rest, by Wednesday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    96,
+    98
+   ],
+   "owner": "Ananya"
+  },
+  {
+   "id": "T-rahul-capacity",
+   "text": "Provide sales capacity assumptions and the impact of delaying the sales development representative, by Tuesday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    96,
+    98,
+    100
+   ],
+   "owner": "Rahul"
+  },
+  {
+   "id": "T-dev-pipeline",
+   "text": "Send the latest pipeline report tomorrow morning",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    102
+   ],
+   "owner": "Dev"
+  },
+  {
+   "id": "T-karan-vendor",
+   "text": "Ask the cloud vendor for a lower minimum and confirm the actual offer expiry date",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    118
+   ],
+   "owner": "Karan"
+  },
+  {
+   "id": "T-dev-cloud-model",
+   "text": "Model three cloud cases: current run rate, optimized run rate and a 15% usage decline, with shortfall charge and net savings",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    118,
+    120
+   ],
+   "owner": "Dev"
+  },
+  {
+   "id": "T-meera-agency",
+   "text": "Get revised agency quotes for both campaign scopes and confirm which costs are already in the budget model, by Monday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    134,
+    136
+   ],
+   "owner": "Meera"
+  },
+  {
+   "id": "T-ananya-support",
+   "text": "Ask the support vendor for guaranteed surge capacity, cancellation terms and response-time commitments, compare with staying monthly",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    146,
+    148
+   ],
+   "owner": "Ananya"
+  },
+  {
+   "id": "T-rahul-travel",
+   "text": "Split the ₹7 lakh travel budget, give a two-attendee option and the coverage lost without the conference, by Tuesday",
+   "categories": [
+    "task"
+   ],
+   "lines": [
+    176,
+    178
+   ],
+   "owner": "Rahul"
+  },
+  {
+   "id": "K-forecast-unknown",
+   "text": "Forecasts differ (₹1.8 vs ₹1.94 crore); contractor invoices not reconciled, so it is unclear whether Q4 is over budget",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    14,
+    16,
+    18
+   ]
+  },
+  {
+   "id": "K-infra-growth",
+   "text": "Infrastructure spend rising from about ₹8.5 lakh to ₹10 lakh a month",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    24,
+    28
+   ],
+   "optional": true
+  },
+  {
+   "id": "K-shutdown-breaks-tests",
+   "text": "Shutting staging down blindly could break overnight integration tests and cost two days debugging failed deployments",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    28,
+    30,
+    32
+   ]
+  },
+  {
+   "id": "K-attribution",
+   "text": "Campaign attribution isn't perfect; some customers would have converted anyway",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    42
+   ],
+   "optional": true
+  },
+  {
+   "id": "K-target-not-supported",
+   "text": "The sales pipeline doesn't support treating the ₹60 lakh target as guaranteed",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    46,
+    48
+   ]
+  },
+  {
+   "id": "K-cut-outcome",
+   "text": "Cutting to ₹15 lakh means dropping two larger creators with no promise of the same outcome",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    52,
+    54
+   ]
+  },
+  {
+   "id": "K-refunds",
+   "text": "First-week revenue reports included orders later refunded",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    60,
+    62
+   ]
+  },
+  {
+   "id": "K-recruitment-fees",
+   "text": "Recruitment fees are not in the hiring cost; engineering roles may need external sourcing",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    70,
+    72
+   ],
+   "optional": true
+  },
+  {
+   "id": "K-migration-slip",
+   "text": "Without the data engineer the analytics migration could slip into next quarter",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    74
+   ]
+  },
+  {
+   "id": "K-agency-costs",
+   "text": "Postponing the recruiter may mean paying more agencies short term",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    80
+   ]
+  },
+  {
+   "id": "K-deferral-savings",
+   "text": "Deferring roles doesn't automatically save the full amount; start dates and offers in progress are uncertain",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    84
+   ]
+  },
+  {
+   "id": "K-sales-response",
+   "text": "Without the SDR, sales response times may increase; no reliable capacity model",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    86,
+    92,
+    94
+   ]
+  },
+  {
+   "id": "K-shortfall",
+   "text": "Optimized spend could fall below the ₹90 lakh minimum and the shortfall charge could erase the discount",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    110,
+    112
+   ]
+  },
+  {
+   "id": "K-expiry",
+   "text": "The 15th expiry may be a hard deadline or a sales tactic",
+   "categories": [
+    "risk",
+    "open_question"
+   ],
+   "lines": [
+    116
+   ],
+   "optional": true
+  },
+  {
+   "id": "K-ticket-volume",
+   "text": "Ticket volume likely to rise after the campaign; support surge capacity is not contractually guaranteed",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    140,
+    142,
+    144
+   ]
+  },
+  {
+   "id": "K-audit-retention",
+   "text": "The cheaper monitoring plan may not retain enough data for audit requirements; incidents sometimes exceed the limit",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    150,
+    154
+   ]
+  },
+  {
+   "id": "K-conditional-savings",
+   "text": "Conditional savings counted in the forecast as if already realized",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    162
+   ]
+  },
+  {
+   "id": "K-conference-attribution",
+   "text": "No reliable attribution for the conference; cutting it could lose enterprise deals like last year's",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    170,
+    174
+   ]
+  },
+  {
+   "id": "K-insurance",
+   "text": "Cash paid and expense recognized keep getting mixed; only a quarter of the insurance renewal is Q4 expense",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    180,
+    182
+   ],
+   "optional": true
+  },
+  {
+   "id": "K-gap-includes-unapproved",
+   "text": "The forecast includes unapproved campaign expansion, all six hires and unverified cloud assumptions",
+   "categories": [
+    "risk"
+   ],
+   "lines": [
+    190
+   ]
+  },
+  {
+   "id": "Q-forecast",
+   "text": "What the reconciled Q4 forecast is",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    14,
+    16,
+    20
+   ],
+   "optional": true
+  },
+  {
+   "id": "Q-staging-shutdown",
+   "text": "Whether staging can shut down outside working hours without breaking overnight tests",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    28,
+    30,
+    32
+   ]
+  },
+  {
+   "id": "Q-release-threshold",
+   "text": "Conversion rate and customer acquisition cost thresholds for releasing the second tranche",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    56,
+    58
+   ]
+  },
+  {
+   "id": "Q-refund-timing",
+   "text": "How quickly refund-adjusted revenue data becomes reliable",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    62
+   ]
+  },
+  {
+   "id": "Q-campaign-option",
+   "text": "Which campaign budget, ₹18 lakh or ₹15 lakh",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    52,
+    64
+   ]
+  },
+  {
+   "id": "Q-sdr",
+   "text": "Whether to hire the sales development representative now or defer it",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    86,
+    92,
+    94
+   ]
+  },
+  {
+   "id": "Q-cloud-commit",
+   "text": "Whether to take the annual cloud commitment; an open decision",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    114,
+    116,
+    122,
+    124
+   ]
+  },
+  {
+   "id": "Q-monitoring-plan",
+   "text": "Whether the cheaper monitoring plan's retention is enough and overage pricing is available",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    154,
+    156,
+    158
+   ]
+  },
+  {
+   "id": "Q-conference",
+   "text": "Whether to keep, reduce or cut the December conference",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    172,
+    174,
+    176
+   ]
+  },
+  {
+   "id": "Q-final-gap",
+   "text": "Whether the gap remains after the revised numbers; which proposals to approve, defer or reject on Wednesday",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    214
+   ]
+  }
+ ],
+ "forbidden": [
+  {
+   "text": "do not cut the conference entirely until pipeline improves",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    "170-176"
+   ],
+   "why": "Priya: we're not deciding that now"
+  },
+  {
+   "text": "cut the conference entirely",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    "170-176"
+   ],
+   "why": "Sameer's preference; not decided",
+   "if_affirmed": true
+  },
+  {
+   "text": "take the cloud discount commitment",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    106,
+    122,
+    124
+   ],
+   "why": "an open decision",
+   "if_affirmed": true
+  },
+  {
+   "text": "sign the six-month support contract",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    138,
+    146
+   ],
+   "why": "explicitly not signed",
+   "if_affirmed": true
+  },
+  {
+   "text": "campaign budget ₹15 lakh approved",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    52,
+    54,
+    64
+   ],
+   "why": "no one approved either budget",
+   "if_affirmed": true
+  },
+  {
+   "text": "₹60 lakh revenue target must",
+   "categories": [
+    "requirement"
+   ],
+   "lines": [
+    46,
+    48
+   ],
+   "why": "a target, not a forecast or requirement"
+  },
+  {
+   "text": "separate service staging cluster",
+   "categories": [
+    "decision",
+    "requirement"
+   ],
+   "lines": [
+    24,
+    28
+   ],
+   "why": "never discussed"
+  }
+ ],
+ "forbidden_terms": [
+  "separate service",
+  "event sourcing",
+  "layoff"
+ ]
+}

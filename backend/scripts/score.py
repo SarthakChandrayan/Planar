@@ -233,8 +233,11 @@ def score(analysis: dict, key: dict, plan: dict | None = None) -> Result:
             f for f in key["forbidden"] if item.category in f.categories and not (f.if_affirmed and negated)
         ]
         bad = _best(item, candidates, lambda f: f.text)
-        match = _best(item, key["items"], lambda k: k.text)
-        if bad and (match is None or bad[0] >= match[0]):
+        # Several key items can cite the same line ("prepare two options" and
+        # "which option?" both cite L64): prefer one this category may be.
+        fits = _best(item, [k for k in key["items"] if item.category in k.categories], lambda k: k.text)
+        match = fits or _best(item, key["items"], lambda k: k.text)
+        if bad and (match is None or bad[0] > match[0]):
             res.forbidden.append((item, bad[1]))
             continue
         if match is None:
