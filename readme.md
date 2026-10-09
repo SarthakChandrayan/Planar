@@ -176,23 +176,32 @@ npm run build
 
 ## Measuring accuracy
 
-Five sample meetings have hand-labelled answer keys in
-`backend/tests/evaluation/keys/`: what each meeting really decided, required,
-assigned, worried about and left open, with the transcript lines that say so,
-plus things that must not be extracted (an answered question as an open one).
-Items match by cited line, not wording, so the score does not reward a phrasing.
+Six sample meetings have hand-labelled answer keys in
+`backend/tests/evaluation/keys/`: five engineering and product meetings plus a
+finance budget review. Each key lists what the meeting really decided,
+required, assigned, worried about and left open, with the transcript lines that
+say so, plus things that must not be extracted (an answered question as an open
+one). Items match by cited line, not wording, so the score does not reward a
+phrasing.
 
 ```powershell
 cd backend
 .\.venv\Scripts\python scripts\score.py                    # score the latest saved run of each keyed meeting (no model)
-.\.venv\Scripts\python scripts\evaluate.py --name current  # run all five with the model and score them (~40 min)
+.\.venv\Scripts\python scripts\evaluate.py --name current  # run all six with the model and score them (~60 min)
 ```
 
-Judge every change by these scores across all five meetings, never by one
-report. With qwen3:8b (October 2026), before the second look: 81% precision, 60%
-recall across the five; the second look on decisions and requirements raised
-that to about 76% / 68% (combined from the evaluation runs). The model misses items more often than it invents them, so recall is the
-thing to improve.
+Judge every change by these scores across all six meetings, never by one
+report. With qwen3:8b (October 2026), across the six: **about 75% of extracted
+items are correct and 64% of what was said is found**. Tasks and owners are the
+strongest part (about 90% correct, 80% found); risks and open questions are the
+weakest (under half found). The model misses items more often than it invents
+them.
+
+Measured and kept: a second look at decisions and requirements (recall 60% → 68%
+on the original five). Measured and dropped, because they scored no better:
+extracting one topic at a time, a pass that classified every choice, and a
+verify pass that labels each decision as agreed, deferred or only proposed
+(still available, off by default: `ANALYSIS_VERIFY=true`).
 
 CI runs the fast backend tests, lint and the frontend build on every push.
 
