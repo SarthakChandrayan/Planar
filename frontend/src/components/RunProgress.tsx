@@ -91,7 +91,13 @@ export function RunProgress({
               <span className="stage-marker" aria-hidden="true">
                 {state === 'done' ? <CheckIcon size={13} /> : index + 1}
               </span>
-              <span className="stage-label">{label}</span>
+              <span className="stage-label">
+                {/* "Requirements · part 1/2 · second look": name first, details under it */}
+                {label.split(' · ')[0]}
+                {label.includes(' · ') ? (
+                  <span className="stage-sub">{label.split(' · ').slice(1).join(' · ')}</span>
+                ) : null}
+              </span>
               <span className="stage-meta">
                 {state === 'done' && seconds != null ? formatElapsed(seconds * 1000) : null}
                 {state === 'active'

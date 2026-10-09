@@ -540,8 +540,8 @@
 /* ------------------------------------------------------------------ progress */
 
 .progress {
-  padding: 24px;
-  max-width: 640px;
+  padding: 24px 28px;
+  max-width: 1040px;
   margin: 24px auto 0;
 }
 
@@ -600,36 +600,73 @@
   transition: width 0.6s ease;
 }
 
+/* Horizontal stepper: one column per stage, joined by a line. Long runs
+   (several parts) scroll sideways; phones get the vertical list below. */
 .stages {
-  margin: 20px 0 0;
-  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(92px, 1fr);
+  margin: 28px 0 0;
+  padding: 0 0 4px;
   list-style: none;
+  overflow-x: auto;
 }
 
 .stage {
-  display: grid;
-  grid-template-columns: 26px 1fr auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 0.92rem;
+  gap: 8px;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 0.84rem;
 }
 
-.stage:last-child {
-  border-bottom: 0;
+/* The connector from the previous stage's marker to this one. */
+.stage::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+}
+
+.stage:first-child::before {
+  display: none;
+}
+
+.stage.is-done + .stage::before {
+  background: var(--ok);
 }
 
 .stage-marker {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 1.5px solid var(--line-strong);
+  background: var(--surface);
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted);
+}
+
+.stage-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.stage-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .stage.is-done .stage-marker {
@@ -659,8 +696,42 @@
 
 .stage-meta {
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--muted);
+  min-height: 1.2em;
+}
+
+@media (max-width: 640px) {
+  .stages {
+    display: block;
+    overflow: visible;
+  }
+
+  .stage {
+    display: grid;
+    grid-template-columns: 26px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    font-size: 0.92rem;
+  }
+
+  .stage:last-child {
+    border-bottom: 0;
+  }
+
+  .stage::before {
+    display: none;
+  }
+
+  .stage-label {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0 6px;
+    align-items: baseline;
+  }
 }
 
 .progress-note {
