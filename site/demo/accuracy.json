@@ -1,0 +1,50 @@
+[
+ {
+  "id": "checkout_event_architecture",
+  "title": "Checkout Platform — Distributed Transaction & Event Architecture Review",
+  "recorded": "2026-10-07T10:52:13.147664+00:00",
+  "correct": 39,
+  "extracted": 43,
+  "found": 33,
+  "expected": 55,
+  "precision": 0.907,
+  "recall": 0.6,
+  "invented": 3
+ },
+ {
+  "id": "distributed_platform_migration",
+  "title": "Distributed Platform Migration & Reliability Review",
+  "recorded": "2026-10-07T08:53:09.205593+00:00",
+  "correct": 38,
+  "extracted": 39,
+  "found": 33,
+  "expected": 51,
+  "precision": 0.974,
+  "recall": 0.647,
+  "invented": 1
+ },
+ {
+  "id": "mobile_offline_sync",
+  "title": "Mobile Offline Mode Planning",
+  "recorded": "2026-10-05T07:49:37.900459+00:00",
+  "correct": 15,
+  "extracted": 18,
+  "found": 13,
+  "expected": 17,
+  "precision": 0.833,
+  "recall": 0.765,
+  "invented": 0
+ },
+ {
+  "id": "quarterly_product_launch",
+  "title": "Quarterly Product Launch Planning Meeting",
+  "recorded": "2026-10-05T11:53:16.895741+00:00",
+  "correct": 20,
+  "extracted": 23,
+  "found": 20,
+  "expected": 32,
+  "precision": 0.87,
+  "recall": 0.625,
+  "invented": 1
+ }
+]

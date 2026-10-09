@@ -1,3 +1,4 @@
+import { DEMO, asset } from '../demo'
 import { useTheme } from '../theme'
 import type { Readiness } from '../types/run'
 import { MoonIcon, SunIcon } from './icons'
@@ -15,11 +16,16 @@ export function Header({
   return (
     <header className="topbar">
       <button type="button" className="brand" onClick={onHome} aria-label="Planar home">
-        <img className="brand-mark" src="/brand/icon-64.png" width={32} height={32} alt="" />
+        <img className="brand-mark" src={asset('brand/icon-64.png')} width={32} height={32} alt="" />
         <span className="brand-wordmark" aria-hidden="true" />
       </button>
       <div className="topbar-right">
-        {readiness ? (
+        {DEMO ? (
+          <span className="status-pill is-demo" title="Recorded runs from the real pipeline; no model runs in the browser">
+            <span className="status-dot" aria-hidden="true" />
+            Demo · recorded runs
+          </span>
+        ) : readiness ? (
           <span
             className={`status-pill ${ready ? 'is-ok' : 'is-down'}`}
             title={ready ? 'Local model is ready' : readiness.detail ?? 'Model not ready'}

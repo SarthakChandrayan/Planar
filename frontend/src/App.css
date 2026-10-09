@@ -1585,3 +1585,8 @@
     flex: 1 1 auto;
   }
 }
+
+/* Demo build (website): recorded runs instead of a live model. */
+.status-pill.is-demo .status-dot {
+  background: var(--c-decision);
+}

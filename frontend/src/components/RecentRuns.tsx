@@ -34,10 +34,12 @@ export function RecentRuns({
   runs,
   onOpen,
   onDelete,
+  title = 'Recent analyses',
 }: {
   runs: RunSummary[]
   onOpen: (id: string) => void
-  onDelete: (id: string) => void
+  onDelete?: (id: string) => void
+  title?: string
 }) {
   if (runs.length === 0) {
     return null
@@ -45,7 +47,7 @@ export function RecentRuns({
   return (
     <section className="recent" aria-labelledby="recent-heading">
       <h2 id="recent-heading" className="section-title">
-        Recent analyses
+        {title}
       </h2>
       <ul className="run-grid">
         {runs.map((run) => {
@@ -67,7 +69,7 @@ export function RecentRuns({
                 </span>
                 <span className="run-title">{run.title}</span>
                 <span className="run-meta">
-                  {formatWhen(run.created_at)}
+                  {onDelete ? formatWhen(run.created_at) : `${Math.round(run.transcript_chars / 1000)}k characters`}
                   {took ? ` · took ${took}` : null}
                   {active ? ' · click to watch' : null}
                 </span>
@@ -75,6 +77,7 @@ export function RecentRuns({
                   <span className="run-error">{run.error}</span>
                 ) : null}
               </button>
+              {onDelete ? (
               <button
                 type="button"
                 className="icon-button run-delete"
@@ -85,6 +88,7 @@ export function RecentRuns({
               >
                 <TrashIcon size={15} />
               </button>
+              ) : null}
             </li>
           )
         })}

@@ -1,0 +1,78 @@
+[
+ {
+  "id": "checkout_event_architecture",
+  "title": "Checkout Platform — Distributed Transaction & Event Architecture Review",
+  "status": "succeeded",
+  "created_at": "2026-10-07T10:52:13.147664Z",
+  "started_at": "2026-10-07T10:52:13.152609Z",
+  "finished_at": "2026-10-07T11:03:34.829790Z",
+  "transcript_chars": 14727,
+  "progress": {
+   "stage": "Done",
+   "step": 5,
+   "total_steps": 5,
+   "stage_tokens": 879,
+   "total_tokens": 2783,
+   "eta_seconds": null
+  },
+  "error": null,
+  "warnings": []
+ },
+ {
+  "id": "distributed_platform_migration",
+  "title": "Distributed Platform Migration & Reliability Review",
+  "status": "succeeded",
+  "created_at": "2026-10-07T08:53:09.205593Z",
+  "started_at": "2026-10-07T08:53:09.207469Z",
+  "finished_at": "2026-10-07T09:03:52.940680Z",
+  "transcript_chars": 12481,
+  "progress": {
+   "stage": "Done",
+   "step": 5,
+   "total_steps": 5,
+   "stage_tokens": 833,
+   "total_tokens": 2298,
+   "eta_seconds": null
+  },
+  "error": null,
+  "warnings": []
+ },
+ {
+  "id": "mobile_offline_sync",
+  "title": "Mobile Offline Mode Planning",
+  "status": "succeeded",
+  "created_at": "2026-10-05T07:49:37.900459Z",
+  "started_at": "2026-10-05T07:49:37.901325Z",
+  "finished_at": "2026-10-05T07:55:16.992176Z",
+  "transcript_chars": 3282,
+  "progress": {
+   "stage": "Done",
+   "step": 5,
+   "total_steps": 5,
+   "stage_tokens": 438,
+   "total_tokens": 1281,
+   "eta_seconds": null
+  },
+  "error": null,
+  "warnings": []
+ },
+ {
+  "id": "quarterly_product_launch",
+  "title": "Quarterly Product Launch Planning Meeting",
+  "status": "succeeded",
+  "created_at": "2026-10-05T11:53:16.895741Z",
+  "started_at": "2026-10-05T11:53:16.896749Z",
+  "finished_at": "2026-10-05T12:06:08.543070Z",
+  "transcript_chars": 10429,
+  "progress": {
+   "stage": "Done",
+   "step": 5,
+   "total_steps": 5,
+   "stage_tokens": 610,
+   "total_tokens": 2164,
+   "eta_seconds": null
+  },
+  "error": null,
+  "warnings": []
+ }
+]

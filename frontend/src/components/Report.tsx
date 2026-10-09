@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { cancelPlan, getReportMarkdown, getRun, regeneratePlan, reportUrl } from '../api/runs'
+import { DEMO } from '../demo'
 import { formatApprox, formatClock, formatElapsed } from '../formatElapsed'
 import { buildTraceIndex } from '../trace'
 import type { Run } from '../types/run'
@@ -206,7 +207,7 @@ export function Report({ run: initialRun, onBack }: { run: Run; onBack: () => vo
           <div className="report-top">
             <button type="button" className="button button-ghost" onClick={onBack}>
               <ArrowLeftIcon size={16} />
-              New analysis
+              {DEMO ? 'All examples' : 'New analysis'}
             </button>
             <div className="report-actions">
               <button type="button" className="button button-ghost" onClick={() => void copyMarkdown()}>
@@ -217,6 +218,7 @@ export function Report({ run: initialRun, onBack }: { run: Run; onBack: () => vo
                 <DownloadIcon size={16} />
                 Download .md
               </a>
+              {DEMO ? null : (
               <button
                 type="button"
                 className="button button-ghost"
@@ -227,6 +229,7 @@ export function Report({ run: initialRun, onBack }: { run: Run; onBack: () => vo
                 <RefreshIcon size={16} className={planActive ? 'spin' : undefined} />
                 {planActive ? 'Writing new plan…' : 'Regenerate plan'}
               </button>
+              )}
             </div>
           </div>
 

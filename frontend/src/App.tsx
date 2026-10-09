@@ -18,6 +18,7 @@ import { AlertIcon } from './components/icons'
 import { RecentRuns } from './components/RecentRuns'
 import { Report } from './components/Report'
 import { RunProgress } from './components/RunProgress'
+import { DEMO } from './demo'
 import { formatApprox } from './formatElapsed'
 import {
   isFinished,
@@ -303,7 +304,27 @@ function App() {
       : null
 
   let view
-  if (activeRun) {
+  if (DEMO && !result?.analysis) {
+    view = (
+      <>
+        <div className="hero">
+          <h1>Turn a meeting into a plan.</h1>
+          <p>
+            These are real runs of Planar on five sample meetings, recorded on a laptop with a local
+            8B model. Open one to see the decisions, requirements, tasks, risks and open questions,
+            each linked to the transcript lines it came from, and the implementation plan.
+          </p>
+        </div>
+        {error ? (
+          <div className="callout callout-danger" role="alert">
+            <AlertIcon size={18} />
+            <p>{error}</p>
+          </div>
+        ) : null}
+        <RecentRuns runs={recent} onOpen={(id) => void handleOpen(id)} title="Example meetings" />
+      </>
+    )
+  } else if (activeRun) {
     view = (
       <RunProgress run={activeRun} elapsedMs={elapsedMs} onCancel={() => void handleCancel()} />
     )

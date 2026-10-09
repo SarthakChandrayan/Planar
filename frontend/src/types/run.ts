@@ -68,7 +68,7 @@ export interface Sample extends SampleSummary {
 }
 
 export interface Readiness {
-  status: 'ok' | 'unavailable'
+  status: 'ok' | 'unavailable' | 'demo'
   model: string
   detail?: string | null
 }

@@ -8,6 +8,12 @@
       "port": 8000
     },
     {
+      "name": "site",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "site", "--bind", "127.0.0.1"],
+      "port": 4173
+    },
+    {
       "name": "web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],

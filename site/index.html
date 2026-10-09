@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planar</title>
+<meta name="description" content="Planar turns a meeting transcript into decisions, requirements, tasks, risks, open questions and an implementation plan, each linked to the lines it came from. Runs on a laptop with a local model.">
+<meta property="og:title" content="Planar: turn a meeting into a plan">
+<meta property="og:description" content="Decisions, requirements, tasks, risks and a plan from a meeting transcript, every item traced to its source lines. Local model, no cloud.">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="app/brand/icon-32.png">
+<link rel="apple-touch-icon" href="app/brand/apple-touch-icon.png">
+<script>try { const t = localStorage.getItem("planar.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <a class="brand" href="#top" aria-label="Planar">
+      <img src="app/brand/icon-64.png" width="28" height="28" alt="">
+      <span class="wordmark" aria-hidden="true"></span>
+    </a>
+    <nav class="nav">
+      <a href="#demo" class="keep">Demo</a>
+      <a href="#how">How it works</a>
+      <a href="#accuracy">Accuracy</a>
+      <a href="#run" class="keep">Run it</a>
+      <a href="https://github.com/SarthakChandrayan/SpecForge">GitHub</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button" aria-label="Switch theme" title="Switch theme"></button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="wrap hero">
+    <div>
+      <p class="eyebrow">Meeting → plan · runs on a laptop</p>
+      <h1>Turn a meeting into a plan you can check.</h1>
+      <p class="lead">Paste a meeting transcript. Planar pulls out the <b class="k k-dec">decisions</b>, <b class="k k-req">requirements</b>, <b class="k k-task">tasks</b>, <b class="k k-risk">risks</b> and <b class="k k-q">open questions</b>, links each one to the lines that said it, and drafts an implementation plan. A local model does the reading, so the transcript never leaves the machine.</p>
+      <div class="cta">
+        <a class="btn primary" href="#demo">Explore the demo</a>
+        <a class="btn" href="#run">Run it yourself</a>
+      </div>
+    </div>
+    <dl class="facts">
+      <dt>model</dt><dd>qwen3:8b via Ollama, local</dd>
+      <dt>hardware</dt><dd>16 GB laptop, Intel Iris Xe</dd>
+      <dt>a meeting</dt><dd>about 4–10 minutes</dd>
+      <dt>evidence</dt><dd>every item cites transcript lines</dd>
+      <dt>privacy</dt><dd>offline, no account, no cloud</dd>
+      <dt>stack</dt><dd>Python · FastAPI · React · TypeScript</dd>
+    </dl>
+  </section>
+
+  <section class="wrap section" id="demo">
+    <div class="head">
+      <span class="num">01</span><h2>Live demo</h2>
+      <p>Real runs on sample meetings, recorded on the laptop above and shown in the actual Planar interface. Nothing was edited. Open a meeting, click any item to see the transcript lines behind it, and try the plan map.</p>
+    </div>
+    <div class="window">
+      <div class="win-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="addr">localhost:5173 · Planar</span>
+        <a class="win-open" href="app/" target="_blank" rel="noopener">open full screen ↗</a>
+      </div>
+      <iframe id="demo-frame" src="app/" title="Planar demo" loading="lazy"></iframe>
+    </div>
+    <p class="note">The browser can't run an 8B model, so the demo replays recorded output. Analysing your own meeting needs the app running locally.</p>
+  </section>
+
+  <section class="wrap section" id="how">
+    <div class="head">
+      <span class="num">02</span><h2>How it works</h2>
+      <p>A small model does one narrow job at a time, and the backend checks everything it says against the transcript before keeping it.</p>
+    </div>
+    <ol class="pipeline">
+      <li>
+        <span class="tag">read</span>
+        <h3>Number the lines</h3>
+        <p>Speakers and timestamps are detected and every non-blank line gets a number. Long meetings are split into overlapping chunks instead of being cut off.</p>
+      </li>
+      <li>
+        <span class="tag">extract</span>
+        <h3>Focused passes</h3>
+        <p>Decisions, then requirements, tasks, and risks with open questions. Each pass is a separate call, constrained to a JSON schema, citing line numbers rather than quoting. A second look asks only for what the first one missed.</p>
+      </li>
+      <li>
+        <span class="tag">check</span>
+        <h3>Ground every item</h3>
+        <p>The cited lines must support the claim. "Should" stays "should", numbers and dates must exist in the meeting, an answered question is not open, and a rule restated as a risk is dropped.</p>
+      </li>
+      <li>
+        <span class="tag">link</span>
+        <h3>Trace and plan</h3>
+        <p>Links between items come from shared evidence, not the model. Plan steps cite the decisions, requirements and tasks they apply, and the plan map draws why → what → how → who.</p>
+      </li>
+    </ol>
+    <div class="facts-grid">
+      <div><b>Line-level evidence</b><span>Click any item to see exactly what was said</span></div>
+      <div><b>Owners and due dates</b><span>Kept only if the transcript names them</span></div>
+      <div><b>Plan map</b><span>Decisions → requirements → steps → owners</span></div>
+      <div><b>Markdown export</b><span>With a Mermaid version of the plan map</span></div>
+      <div><b>Time estimates</b><span>Learned from this machine's past runs</span></div>
+      <div><b>Background runs</b><span>Close the tab; the run keeps going</span></div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="accuracy">
+    <div class="head">
+      <span class="num">03</span><h2>Measured accuracy</h2>
+      <p>Each sample meeting has a hand-written answer key: what was really decided, required, assigned, worried about and left open, with the lines that say so. Output is matched by line, not wording, so the score doesn't reward a phrasing.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="scores">
+        <thead><tr><th>Meeting in the demo</th><th>Items right</th><th>Real items found</th><th>Precision</th><th>Recall</th></tr></thead>
+        <tbody id="scores"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="findings">
+      <p><b>What the scores say.</b> The model misses things more often than it invents them. In these recorded runs about 9 in 10 extracted items are right, but only about 6 in 10 real items are found. A "second look" pass, added after these runs and re-measured on five meetings, lifts recall to about 7 in 10 with no more invented items.</p>
+      <p><b>How it got here.</b> Every change is judged by these scores across all meetings, never by one good-looking report. Ideas that sounded better but scored worse, such as extracting one topic at a time, were measured and removed.</p>
+    </div>
+  </section>
+
+  <section class="wrap section" id="run">
+    <div class="head">
+      <span class="num">04</span><h2>Run it yourself</h2>
+      <p>Windows, macOS or Linux with Python 3.12, Node 22 and <a href="https://ollama.com">Ollama</a>. 16 GB of RAM is enough for the 8B model.</p>
+    </div>
+    <div class="run">
+      <div>
+        <h3>Set up</h3>
+<pre class="code"><span class="c"># the model, about 5 GB</span>
+ollama pull qwen3:8b
+
+git clone https://github.com/SarthakChandrayan/SpecForge planar
+cd planar
+
+<span class="c"># backend</span>
+cd backend
+python -m venv .venv
+.venv\Scripts\pip install -r requirements-dev.txt
+cd ..
+
+<span class="c"># frontend</span>
+cd frontend
+npm install
+cd ..
+
+<span class="c"># use the 8B model</span>
+echo OLLAMA_MODEL=qwen3:8b &gt; .env</pre>
+      </div>
+      <div>
+        <h3>Start</h3>
+<pre class="code"><span class="c"># terminal 1</span>
+ollama serve
+
+<span class="c"># terminal 2: backend + frontend</span>
+.\start.ps1</pre>
+        <p class="small">Open <code>localhost:5173</code>, paste a transcript or pick a sample, and press Analyze. On a laptop with Intel graphics, enabling Ollama's Vulkan backend (<code>OLLAMA_IGPU_ENABLE=1</code>) roughly halves the run time.</p>
+        <p class="small">Score a run against the answer keys: <code>backend\.venv\Scripts\python backend\scripts\score.py</code></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>Planar · built by <a href="https://github.com/SarthakChandrayan">Sarthak Chandrayan</a></span>
+    <span><a href="https://github.com/SarthakChandrayan/SpecForge">source on GitHub</a></span>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
