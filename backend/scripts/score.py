@@ -370,6 +370,8 @@ def _runs_for(key: dict) -> list[dict]:
 
 
 def main() -> None:
+    # The Windows console defaults to cp1252, which cannot print "₹".
+    sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--run", type=Path, help="a saved run or scripts/analyze.py output")
     parser.add_argument("--key", help="only this key (file stem)")

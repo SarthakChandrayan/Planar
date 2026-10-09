@@ -283,6 +283,29 @@ def test_someone_taking_on_work_is_a_task_not_a_requirement() -> None:
     assert outcome.analysis.requirements == []
 
 
+def test_requirement_restating_a_task_on_the_same_line_is_dropped() -> None:
+    notes = (
+        "Meeting: Budget\n"
+        "Notes: Meera will get revised agency quotes for both campaign scopes and confirm which costs are in the model.\n"
+        "Notes: Campaign spend must be measured on net revenue after refunds."
+    )
+    outcome = _run(notes, {
+        "requirements": {"requirements": [
+            {"statement": "The agency quotes must be revised for both campaign scopes.", "lines": [2]},
+            {"statement": "Campaign spend must be measured on net revenue after refunds.", "lines": [3]},
+        ]},
+        "tasks": {"tasks": [{
+            "title": "Get revised agency quotes",
+            "description": "Meera will get revised agency quotes for both campaign scopes",
+            "owner": "Meera", "priority": "medium", "acceptance_criteria": [], "lines": [2],
+        }]},
+    })
+    assert [(r.id, r.statement) for r in outcome.analysis.requirements] == [
+        ("REQ-001", "Campaign spend must be measured on net revenue after refunds."),
+    ]
+    assert any(d["reason"].startswith("restates a task") for d in outcome.dropped)
+
+
 def test_timing_constraint_is_not_a_task() -> None:
     notes = "Meeting: Gate\nMaya: One final point: no production schema change until the database benchmark is reviewed."
     outcome = _run(notes, {"tasks": {"tasks": [{

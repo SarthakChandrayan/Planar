@@ -84,7 +84,7 @@
     <div class="shell">
       <div class="intro">
         <h2>Explore real runs</h2>
-        <p>The actual Planar interface, replaying runs recorded on a 16 GB laptop with qwen3:8b. Pick a meeting, open any item to see the lines behind it, and try the plan map. Nothing here was edited.</p>
+        <p>The actual Planar interface, replaying runs recorded on my 16 GB laptop with qwen3:8b. Pick a meeting, open any item to see the lines behind it, and try the plan map. Nothing here was edited.</p>
       </div>
       <div class="meetings" id="meetings" role="tablist" aria-label="Sample meetings"></div>
       <div class="stage">
@@ -151,9 +151,10 @@
   <section class="shell split" id="run">
     <div class="intro">
       <h2>Run it on your laptop</h2>
-      <p>Python 3.12, Node 22 and <a href="https://ollama.com">Ollama</a>. 16 GB of RAM is enough for the 8B model; a meeting takes about 4–10 minutes.</p>
+      <p>You need Python 3.12+, Node 22+ and <a href="https://ollama.com">Ollama</a>, and at least 16 GB of RAM for the 8B model. How long a meeting takes depends on your machine. I built and tested it on a 16 GB laptop with integrated graphics, where a meeting took about 4–10 minutes.</p>
       <ul class="notes">
-        <li>Intel graphics: <code>OLLAMA_IGPU_ENABLE=1</code> roughly halves run time.</li>
+        <li>The commands are for Windows (PowerShell).</li>
+        <li>On Intel integrated graphics, <code>OLLAMA_IGPU_ENABLE=1</code> roughly halved run time on my laptop.</li>
         <li>Runs keep going in the background if you close the tab.</li>
         <li>Score a run against the answer keys with <code>scripts/score.py</code>.</li>
       </ul>

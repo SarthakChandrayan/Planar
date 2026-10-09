@@ -101,6 +101,11 @@ _RESTATED_DECISIONS_COVERAGE = 0.5
 # Wherever its evidence comes from, a requirement this much made of one
 # decision's words is that decision restated.
 _RESTATED_DECISION_COVERAGE = 0.7
+# A requirement this much made of a task's or open question's words, on the
+# same lines, is that work or question restated as a must. Measured on twelve
+# saved runs of the six keyed meetings: 0.5 removed 18 wrong requirements and
+# 2 right ones (precision +2 points; recall -0.7 on one set, same on the other).
+_RESTATED_WORK_COVERAGE = 0.5
 # Inferred links: wording overlap needed, lower when evidence lines are shared.
 _LINK_SIMILARITY = 0.3
 _LINK_SIMILARITY_SAME_LINES = 0.12
@@ -848,7 +853,37 @@ class _RecordBuilder:
         end = ref.line_end or ref.line_start
         return [line.number for line in self._transcript.lines if ref.line_start <= line.source_line <= end]
 
+    def _drop_requirements_restating_work(self) -> None:
+        """Drop requirements that restate a task or open question on the same lines.
+
+        On written-up meeting notes the requirements pass turns actions and
+        open points into musts ("The agency fee must be confirmed for both
+        campaign scopes" beside Meera's task to get revised quotes for both
+        scopes). Requirements run before tasks and questions, so this can
+        only be checked once every pass is done.
+        """
+        others = [
+            (f"{t.title}. {t.description}", _ref_lines(t.source_references)) for t in self.tasks
+        ] + [(q.question, _ref_lines([q.source_reference])) for q in self.open_questions]
+        kept = []
+        for requirement in self.requirements:
+            lines = _ref_lines([requirement.source_reference])
+            if any(
+                lines & other_lines and coverage(requirement.statement, text) >= _RESTATED_WORK_COVERAGE
+                for text, other_lines in others
+            ):
+                self._drop(
+                    "requirement", requirement.statement,
+                    "restates a task or open question on the same lines", duplicate=True,
+                )
+                continue
+            kept.append(requirement)
+        self.requirements = [
+            r.model_copy(update={"id": format_item_id(REQ_PREFIX, i)}) for i, r in enumerate(kept, 1)
+        ]
+
     def build(self) -> MeetingAnalysis:
+        self._drop_requirements_restating_work()
         decs = [_target(d.id, d.statement, [d.source_reference]) for d in self.decisions]
         reqs = [_target(r.id, r.statement, [r.source_reference]) for r in self.requirements]
 
