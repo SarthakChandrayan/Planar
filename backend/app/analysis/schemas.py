@@ -16,7 +16,6 @@ MAX_ITEMS_PER_PASS = 20
 MAX_LINES_PER_ITEM = 2
 _PRIORITIES = [item.value for item in Priority]
 _SEVERITIES = [item.value for item in Severity]
-CHOICE_STATUSES = ("decided", "rejected", "deferred", "open")
 
 
 class ExtractionModel(BaseModel):
@@ -85,22 +84,6 @@ class ExtractedRisk(CitedItem):
 class ExtractedOpenQuestion(CitedItem):
     question: str = Field(min_length=1)
     context: str = ""
-
-
-class ExtractedChoice(CitedItem):
-    choice: str = Field(min_length=1)
-    status: str = "open"
-    outcome: str = ""
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _status(cls, value: object) -> object:
-        text = str(value or "").strip().lower()
-        return text if text in CHOICE_STATUSES else "open"
-
-
-class ChoicesPass(ExtractionModel):
-    choices: list[ExtractedChoice] = Field(default_factory=list)
 
 
 class DecisionsPass(ExtractionModel):
@@ -198,16 +181,4 @@ RISKS_QUESTIONS_SCHEMA = _object(
         },
         ["question", "context", "lines"],
     ),
-)
-
-CHOICES_SCHEMA = _object(
-    choices=_list_of(
-        {
-            "choice": _STRING,
-            "status": {"type": "string", "enum": list(CHOICE_STATUSES)},
-            "outcome": _STRING,
-            "lines": _LINES,
-        },
-        ["choice", "status", "outcome", "lines"],
-    )
 )

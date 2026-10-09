@@ -52,9 +52,6 @@ from app.analysis.grounding import (
 )
 from app.analysis.parsing import parse_json_object
 from app.analysis.schemas import (
-    CHOICES_SCHEMA,
-    ChoicesPass,
-    ExtractedChoice,
     DECISIONS_SCHEMA,
     REQUIREMENTS_SCHEMA,
     RISKS_QUESTIONS_SCHEMA,
@@ -134,11 +131,6 @@ _RETRY_TOO_LONG = (
 )
 
 
-# A decision within this many lines of an open choice, sharing this much of
-# its wording, is about the same choice.
-_CHOICE_NEAR_LINES = 2
-_CHOICE_SAME_SUBJECT = 0.3
-
 # Passes that get a second look. Measured on five answer-keyed meetings, a
 # second look at decisions and requirements found 24 more real items with no
 # more false ones; for tasks it mostly re-filed requirements as tasks.
@@ -155,9 +147,6 @@ class _Pass:
 
 
 PASSES: tuple[_Pass, ...] = (
-    # First: how the meeting left each choice. Its "open" choices become open
-    # questions and veto decisions that claim the same choice was settled.
-    _Pass("choices", "Choices", prompts.CHOICES_TASK, CHOICES_SCHEMA, ChoicesPass),
     _Pass("decisions", "Decisions", prompts.DECISIONS_TASK, DECISIONS_SCHEMA, DecisionsPass),
     _Pass(
         "requirements",
@@ -349,8 +338,6 @@ class _RecordBuilder:
         self.tasks: list[Task] = []
         self.risks: list[Risk] = []
         self.open_questions: list[OpenQuestion] = []
-        # Choices the meeting left open: (question, dense line numbers).
-        self.open_choices: list[tuple[str, set[int]]] = []
         self._seen: dict[str, list[tuple[str, Grounding]]] = {
             "decision": [],
             "requirement": [],
@@ -378,8 +365,6 @@ class _RecordBuilder:
     # ------------------------------------------------------------ prompt context
 
     def already_found(self, key: str) -> list[str]:
-        if key == "choices":
-            return [q.question for q in self.open_questions] + [d.statement for d in self.decisions]
         if key == "decisions":
             return [d.statement for d in self.decisions]
         if key == "requirements":
@@ -393,7 +378,6 @@ class _RecordBuilder:
     def add(self, key: str, result: ExtractionModel) -> None:
         self.successful_passes += 1
         handlers: dict[str, Callable[[Any], None]] = {
-            "choices": lambda r: [self._add_choice(i) for i in r.choices],
             "decisions": lambda r: [self._add_decision(i) for i in r.decisions],
             "requirements": lambda r: [self._add_requirement(i) for i in r.requirements],
             "tasks": lambda r: [self._add_task(i) for i in r.tasks],
@@ -485,44 +469,7 @@ class _RecordBuilder:
             )
         )
 
-    def _add_choice(self, item: ExtractedChoice) -> None:
-        """A choice and how the meeting left it.
-
-        Settled ones (decided, rejected, deferred) are decisions; open and
-        deferred ones are open questions. Open ones are also remembered so a
-        later decision claiming the same choice was settled is dropped.
-        """
-        choice = item.choice.strip()
-        outcome = item.outcome.strip()
-        if item.status in ("decided", "rejected", "deferred") and outcome:
-            self._add_decision(ExtractedDecision(statement=outcome, lines=item.lines))
-        if item.status in ("open", "deferred"):
-            grounding = self._grounder.ground(choice, item.lines)
-            if grounding is None:
-                self._drop("choice", choice, "no line in the transcript supports it")
-                return
-            if item.status == "open":
-                self.open_choices.append((choice, {line.number for line in grounding.lines}))
-            context = "Left open in the meeting." if item.status == "open" else f"Deferred: {outcome}"
-            self._add_open_question(
-                ExtractedOpenQuestion(question=choice, context=context, lines=item.lines), trusted=True
-            )
-
-    def _contradicts_open_choice(self, statement: str, grounding: Grounding) -> str | None:
-        lines = {line.number for line in grounding.lines}
-        near = {n + d for n in lines for d in range(-_CHOICE_NEAR_LINES, _CHOICE_NEAR_LINES + 1)}
-        for choice, choice_lines in self.open_choices:
-            if near & choice_lines and coverage(choice, statement) >= _CHOICE_SAME_SUBJECT:
-                return choice
-        return None
-
     def _reject_decision(self, statement: str, grounding: Grounding) -> bool:
-        choice = self._contradicts_open_choice(statement, grounding)
-        if choice is not None:
-            # "Do not cut the conference" when the meeting said "we're not
-            # deciding that now": the choices pass saw it was left open.
-            self._drop("decision", statement, f"the meeting left this open: {choice}")
-            return True
         if any(is_unresolved(line.content) for line in grounding.lines):
             # "Undecided. ... I'd rather benchmark without Redis first" is not
             # a decision against Redis.
@@ -686,16 +633,10 @@ class _RecordBuilder:
             )
         )
 
-    def _add_open_question(self, item: ExtractedOpenQuestion, *, trusted: bool = False) -> None:
+    def _add_open_question(self, item: ExtractedOpenQuestion) -> None:
         claim = f"{item.question} {item.context}".strip()
-        # From the choices pass (trusted), "open" is the model's reading of how
-        # the discussion ended; the wording check for "left open" cues is only
-        # for questions proposed without a status.
         grounding = self._accept(
-            "open_question",
-            claim,
-            item.lines,
-            reject=None if trusted else lambda g: self._reject_open_question(claim, g),
+            "open_question", claim, item.lines, reject=lambda g: self._reject_open_question(claim, g)
         )
         if grounding is None:
             return

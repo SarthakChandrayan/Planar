@@ -46,7 +46,8 @@
     "decision"
    ],
    "lines": [
-    64
+    64,
+    208
    ]
   },
   {
@@ -58,7 +59,8 @@
    "lines": [
     118,
     122,
-    124
+    124,
+    208
    ]
   },
   {
@@ -68,7 +70,8 @@
     "decision"
    ],
    "lines": [
-    146
+    146,
+    208
    ]
   },
   {
@@ -210,7 +213,8 @@
     "decision"
    ],
    "lines": [
-    96
+    96,
+    208
    ]
   },
   {
@@ -684,7 +688,8 @@
    "lines": [
     154,
     156,
-    158
+    158,
+    160
    ]
   },
   {
@@ -707,6 +712,46 @@
    ],
    "lines": [
     214
+   ]
+  },
+  {
+   "id": "Q-support-contract",
+   "text": "Whether to sign the six-month support contract or stay monthly",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    138,
+    142,
+    144,
+    146
+   ]
+  },
+  {
+   "id": "Q-second-tranche",
+   "text": "Whether to release the second campaign tranche",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    54,
+    56,
+    198,
+    200
+   ]
+  },
+  {
+   "id": "Q-hiring",
+   "text": "Which deferred hiring roles to approve after reviewing the revised forecast",
+   "categories": [
+    "open_question"
+   ],
+   "lines": [
+    82,
+    84,
+    96,
+    202,
+    204
    ]
   }
  ],
