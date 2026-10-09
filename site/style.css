@@ -70,11 +70,23 @@ h1 { margin: 0; font: 650 clamp(34px, 5vw, 52px)/1.08 var(--display); letter-spa
 .btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); text-decoration: none; font-weight: 600; font-size: 14.5px; }
 .btn:hover { border-color: var(--ink); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
-.facts dt, .facts dd { margin: 0; padding: 11px 16px; border-top: 1px solid var(--line); }
-.facts dt:first-of-type, .facts dd:first-of-type { border-top: 0; }
-.facts dt { font: 12.5px/1.6 var(--mono); color: var(--muted); }
-.facts dd { font-size: 14px; }
+.byline { margin: 18px 0 0; font-size: 13px; color: var(--muted); }
+
+/* Hero example: transcript lines and the items read from them. */
+.sample { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-lg); overflow: hidden; }
+.sample-label { margin: 0 0 8px; font: 500 11.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.sample-transcript { padding: 16px 18px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.sample-transcript p:not(.sample-label) { display: grid; grid-template-columns: 44px minmax(0, 1fr); margin: 0; padding: 5px 8px; border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.sample-transcript .ln { font: 12px/1.6 var(--mono); color: var(--muted); }
+.sample-transcript .hit-dec { color: var(--ink); background: color-mix(in srgb, var(--c-decision) 12%, transparent); }
+.sample-transcript .hit-risk { color: var(--ink); background: color-mix(in srgb, var(--c-risk) 11%, transparent); }
+.sample-transcript .hit-q { color: var(--ink); background: color-mix(in srgb, var(--c-question) 12%, transparent); }
+.sample-items { list-style: none; margin: 0; padding: 10px 12px; display: grid; gap: 6px; }
+.sample-items li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; padding: 9px 12px; border-left: 3px solid var(--c); border-radius: 6px; font-size: 14px; line-height: 1.45; }
+.sample-items .kind { grid-column: 1 / -1; font: 600 11px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--c); }
+.sample-items .cite { align-self: end; font: 12px/1.4 var(--mono); color: var(--muted); padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; }
+.it-dec { --c: var(--c-decision); } .it-risk { --c: var(--c-risk); } .it-q { --c: var(--c-question); }
+.sample figcaption { padding: 0 18px 14px; font-size: 12px; color: var(--muted); }
 
 /* ---------- sections ---------- */
 .section { padding-block: 56px; border-top: 1px solid var(--line); }

@@ -9,7 +9,7 @@
   "expected": 55,
   "precision": 0.907,
   "recall": 0.6,
-  "invented": 3
+  "invented": 2
  },
  {
   "id": "distributed_platform_migration",
@@ -36,15 +36,27 @@
   "invented": 0
  },
  {
+  "id": "q4_budget_review",
+  "title": "Q4 Budget Review — Growth, Hiring & Infrastructure",
+  "recorded": "2026-10-09T07:04:38.827387+00:00",
+  "correct": 29,
+  "extracted": 42,
+  "found": 25,
+  "expected": 52,
+  "precision": 0.69,
+  "recall": 0.481,
+  "invented": 3
+ },
+ {
   "id": "quarterly_product_launch",
   "title": "Quarterly Product Launch Planning Meeting",
   "recorded": "2026-10-05T11:53:16.895741+00:00",
-  "correct": 20,
+  "correct": 21,
   "extracted": 23,
-  "found": 20,
+  "found": 21,
   "expected": 32,
-  "precision": 0.87,
-  "recall": 0.625,
+  "precision": 0.913,
+  "recall": 0.656,
   "invented": 1
  }
 ]

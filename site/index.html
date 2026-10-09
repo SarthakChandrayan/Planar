@@ -43,15 +43,23 @@
         <a class="btn primary" href="#demo">Explore the demo</a>
         <a class="btn" href="#run">Run it yourself</a>
       </div>
+      <p class="byline">qwen3:8b on a 16 GB laptop · about 4–10 minutes a meeting · nothing leaves the machine</p>
     </div>
-    <dl class="facts">
-      <dt>model</dt><dd>qwen3:8b via Ollama, local</dd>
-      <dt>hardware</dt><dd>16 GB laptop, Intel Iris Xe</dd>
-      <dt>a meeting</dt><dd>about 4–10 minutes</dd>
-      <dt>evidence</dt><dd>every item cites transcript lines</dd>
-      <dt>privacy</dt><dd>offline, no account, no cloud</dd>
-      <dt>stack</dt><dd>Python · FastAPI · React · TypeScript</dd>
-    </dl>
+    <figure class="sample" aria-label="Example: items Planar extracted, each linked to its transcript line">
+      <div class="sample-transcript">
+        <p class="sample-label">Transcript</p>
+        <p><span class="ln">L72</span>RabbitMQ is currently stable for notification workloads, and migrating it simultaneously would increase operational risk.</p>
+        <p class="hit-dec"><span class="ln">L76</span>The team therefore decided that RabbitMQ would remain responsible for existing notification workloads during the first migration phase.</p>
+        <p class="hit-risk"><span class="ln">L130</span>Mehul warned that performing an additional database lookup for every event could significantly increase PostgreSQL load.</p>
+        <p class="hit-q"><span class="ln">L312</span>The team also needs to determine the retention period for Kafka transaction events.</p>
+      </div>
+      <ul class="sample-items">
+        <li class="it-dec"><span class="kind">Decision</span>RabbitMQ keeps notification workloads during the first migration phase.<span class="cite">L76</span></li>
+        <li class="it-risk"><span class="kind">Risk</span>An extra database lookup per event could significantly increase PostgreSQL load.<span class="cite">L130</span></li>
+        <li class="it-q"><span class="kind">Open question</span>How long should Kafka transaction events be kept?<span class="cite">L312</span></li>
+      </ul>
+      <figcaption>From the Distributed Platform sample in the demo</figcaption>
+    </figure>
   </section>
 
   <section class="wrap section" id="demo">
