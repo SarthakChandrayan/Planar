@@ -32,6 +32,9 @@ class Settings(BaseSettings):
 
     # Transcript tokens per chunk. Longer meetings are split with overlap.
     chunk_max_tokens: int = Field(default=8000, ge=500)
+    # After the decisions and requirements passes, ask the model only for
+    # what it missed (raises recall; about a minute more per meeting).
+    analysis_second_look: bool = True
     max_transcript_chars: int = Field(default=300_000, gt=0)
 
     runs_dir: Path = _BACKEND_DIR / "data" / "runs"

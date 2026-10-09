@@ -131,6 +131,12 @@ _RETRY_TOO_LONG = (
 )
 
 
+# Passes that get a second look. Measured on five answer-keyed meetings, a
+# second look at decisions and requirements found 24 more real items with no
+# more false ones; for tasks it mostly re-filed requirements as tasks.
+_SECOND_LOOK_PASSES = frozenset({"decisions", "requirements"})
+
+
 @dataclass(frozen=True)
 class _Pass:
     key: str
@@ -178,10 +184,14 @@ class MeetingAnalyzer:
         *,
         chunk_max_tokens: int = DEFAULT_CHUNK_MAX_TOKENS,
         max_transcript_chars: int | None = None,
+        second_look: bool = False,
     ) -> None:
         self._llm = llm
         self._chunk_max_tokens = chunk_max_tokens
         self._max_transcript_chars = max_transcript_chars
+        # After each pass, show the model what it found and ask only for what
+        # it missed. Recall, not precision, is what a small model lacks.
+        self._second_look = second_look
 
     def analyze(self, transcript: str, progress: Progress | None = None) -> MeetingAnalysis:
         return self.run(transcript, progress).analysis
@@ -189,7 +199,8 @@ class MeetingAnalyzer:
     def stage_count(self, transcript: str) -> int:
         """How many model calls (without retries) ``run`` will make."""
         numbered = NumberedTranscript(transcript.strip())
-        return len(numbered.chunks(self._chunk_max_tokens)) * len(PASSES)
+        chunks = numbered.chunks(self._chunk_max_tokens)
+        return len(chunks) * self._calls_per_chunk()
 
     def run(
         self,
@@ -210,7 +221,7 @@ class MeetingAnalyzer:
 
         numbered = NumberedTranscript(cleaned)
         chunks = numbered.chunks(self._chunk_max_tokens)
-        total = len(chunks) * len(PASSES) + extra_stages
+        total = len(chunks) * self._calls_per_chunk() + extra_stages
         logger.info(
             "meeting_analysis_started transcript_chars=%d est_tokens=%d chunks=%d speakers=%d",
             len(cleaned),
@@ -231,7 +242,26 @@ class MeetingAnalyzer:
                 result = self._run_pass(spec, chunk, len(chunks), builder, progress, label)
                 if result is not None:
                     builder.add(spec.key, result)
+                if not (self._second_look and spec.key in _SECOND_LOOK_PASSES):
+                    continue
+                step += 1
+                progress.stage(f"{label} · second look", step, total)
+                found = builder.already_found(spec.key)
+                if not found:
+                    continue  # the same prompt again would give the same answer
+                more = self._run_pass(
+                    spec, chunk, len(chunks), builder, progress, f"{label} · second look", second_look=found
+                )
+                if more is not None:
+                    builder.add(spec.key, more)
 
+        return self._finish(builder, chunks)
+
+    def _calls_per_chunk(self) -> int:
+        extra = sum(1 for spec in PASSES if spec.key in _SECOND_LOOK_PASSES) if self._second_look else 0
+        return len(PASSES) + extra
+
+    def _finish(self, builder: "_RecordBuilder", chunks: list[TranscriptChunk]) -> AnalysisOutcome:
         if builder.successful_passes == 0:
             raise AnalysisValidationError(
                 "The language model returned invalid analysis output.",
@@ -260,6 +290,8 @@ class MeetingAnalyzer:
         builder: "_RecordBuilder",
         progress: Progress,
         label: str,
+        *,
+        second_look: list[str] | None = None,
     ) -> ExtractionModel | None:
         note: str | None = None
         for attempt in (1, 2):
@@ -267,7 +299,8 @@ class MeetingAnalyzer:
                 chunk,
                 total_chunks,
                 spec.task,
-                already_found=builder.already_found(spec.key) if chunk.index else (),
+                already_found=builder.already_found(spec.key) if chunk.index and not second_look else (),
+                second_look=second_look or (),
                 retry_note=note,
             )
             try:

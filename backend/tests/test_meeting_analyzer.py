@@ -436,3 +436,33 @@ def test_task_schema_requires_a_done_when() -> None:
 
     criteria = TASKS_SCHEMA["properties"]["tasks"]["items"]["properties"]["acceptance_criteria"]
     assert criteria["minItems"] == 1
+
+
+
+def test_second_look_asks_only_for_missed_items_and_keeps_them() -> None:
+    first = {"decisions": [{"statement": "Route all new card-not-present charges through Stripe PaymentIntents.", "lines": [3]}]}
+    more = {"decisions": [{"statement": "Settlement cut-off stays at 22:00 UTC this quarter.", "lines": [5]}]}
+    llm = ScriptedLLM({"decisions": [first, more]})
+    analysis = MeetingAnalyzer(llm, second_look=True).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert len(analysis.decisions) == 2
+    prompts = llm.prompts_for("decisions")
+    assert len(prompts) == 2 and "SECOND LOOK" in prompts[1] and "Stripe PaymentIntents" in prompts[1]
+    # Same prefix as the first look, so the prompt cache is reused.
+    assert prompts[1].startswith(prompts[0][: prompts[0].index("JSON:")])
+
+
+def test_second_look_is_skipped_when_the_first_look_found_nothing() -> None:
+    llm = ScriptedLLM()
+    MeetingAnalyzer(llm, second_look=True).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert all("SECOND LOOK" not in prompt for _, prompt in llm.calls)
+
+
+
+def test_second_look_covers_decisions_and_requirements_only() -> None:
+    llm = ScriptedLLM({
+        "decisions": {"decisions": [{"statement": "Route all new card-not-present charges through Stripe PaymentIntents.", "lines": [3]}]},
+        "tasks": TASKS,
+    })
+    MeetingAnalyzer(llm, second_look=True).analyze(PAYMENT_MEETING_TRANSCRIPT)
+    assert any("SECOND LOOK" in p for p in llm.prompts_for("decisions"))
+    assert not any("SECOND LOOK" in p for p in llm.prompts_for("tasks"))

@@ -117,6 +117,7 @@ def build_pass_prompt(
     task: str,
     *,
     already_found: Sequence[str] = (),
+    second_look: Sequence[str] = (),
     retry_note: str | None = None,
 ) -> str:
     """Assemble a pass prompt: transcript first, pass-specific text last.
@@ -129,6 +130,18 @@ def build_pass_prompt(
         sections.append(
             "ALREADY FOUND in earlier parts of the transcript (do not repeat):\n"
             f"{listing}"
+        )
+    if second_look:
+        # Same prefix as the first look (transcript, task, rules), so Ollama
+        # reuses its cache and only reads this list.
+        listing = "\n".join(f"- {text}" for text in second_look)
+        sections.append(
+            "SECOND LOOK. You already listed these from this transcript:\n"
+            f"{listing}\n"
+            "Read the WHOLE transcript again, beginning to end, including the middle "
+            "of the discussion. List ONLY items that are MISSING from the list above. "
+            "Do not repeat or reword items already listed. Return an empty list if "
+            "nothing is missing."
         )
     if retry_note:
         sections.append(retry_note)

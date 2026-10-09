@@ -1,0 +1,316 @@
+# Distributed Platform Migration & Reliability Review
+
+**Meeting Type:** Engineering Architecture & Reliability Review  
+**Duration:** 67 minutes  
+**Participants:**
+- Aditi — Engineering Manager
+- Vikram — Backend Lead
+- Nikhil — Platform / DevOps Engineer
+- Rhea — Data Engineer
+- Arjun — Security Engineer
+- Mehul — SRE
+- Tanya — Product Manager
+
+---
+
+## 1. Meeting Objective
+
+Aditi opened the meeting by stating that the objective was to finalize the migration strategy for the company's transaction-processing platform.
+
+The existing system processes approximately 18,000 transactions per minute during normal traffic, with peaks approaching 45,000 transactions per minute during promotional events.
+
+Over the last two months, the team has experienced intermittent latency spikes, duplicate transaction events, and delayed downstream notifications.
+
+The immediate concern is not simply throughput. The team needs to improve reliability without introducing a migration that creates inconsistent transaction states or disrupts existing customers.
+
+Tanya emphasized that the upcoming promotional campaign is scheduled for six weeks from now, so the migration timeline cannot be open-ended.
+
+---
+
+## 2. Current Architecture
+
+Vikram described the existing architecture.
+
+The primary transaction service is a Node.js application backed by PostgreSQL. Transaction creation, payment status updates, inventory reservation, and notification generation are currently coordinated through synchronous API calls.
+
+A single transaction can trigger between six and twelve downstream operations.
+
+The system currently uses Redis for short-lived caching and RabbitMQ for asynchronous notification processing.
+
+Mehul pointed out that RabbitMQ is not currently used for transaction state transitions. Most state changes happen synchronously inside the request lifecycle.
+
+This creates a problem when one downstream dependency becomes slow.
+
+For example, if the inventory service takes three seconds to respond, the transaction API can remain blocked even though payment authorization has already completed.
+
+Nikhil added that several services have different timeout values. Some requests time out after five seconds, while others continue retrying for up to thirty seconds.
+
+The group agreed that inconsistent timeout and retry policies are contributing to cascading failures.
+
+---
+
+## 3. Event-Driven Migration Proposal
+
+Vikram proposed moving transaction state propagation to an event-driven model.
+
+The proposed architecture would introduce Kafka between the transaction service and downstream consumers.
+
+Instead of synchronously calling inventory, notification, and analytics services, the transaction service would publish events such as:
+
+- `TransactionCreated`
+- `PaymentAuthorized`
+- `InventoryReserved`
+- `TransactionCompleted`
+- `TransactionFailed`
+
+Consumers would process these events independently.
+
+Mehul asked whether Kafka should replace RabbitMQ entirely.
+
+Nikhil argued against an immediate replacement.
+
+RabbitMQ is currently stable for notification workloads, and migrating it simultaneously would increase operational risk.
+
+Vikram agreed that Kafka should initially be introduced only for transaction-domain events.
+
+The team therefore decided that RabbitMQ would remain responsible for existing notification workloads during the first migration phase.
+
+---
+
+## 4. Ordering and Idempotency
+
+Rhea raised a major concern regarding event ordering.
+
+If `PaymentAuthorized` arrives before `TransactionCreated`, downstream consumers could attempt to update a transaction that does not yet exist.
+
+Vikram proposed using transaction IDs as Kafka partition keys to preserve ordering for events belonging to the same transaction.
+
+Mehul pointed out that partition ordering only applies within a partition and does not solve problems caused by delayed or replayed messages.
+
+The team discussed maintaining a transaction state machine.
+
+Each consumer would validate whether an incoming event represents a valid state transition.
+
+For example:
+
+`CREATED → PAYMENT_AUTHORIZED → INVENTORY_RESERVED → COMPLETED`
+
+An event attempting to transition:
+
+`CREATED → COMPLETED`
+
+would be rejected because the intermediate states had not been satisfied.
+
+Arjun asked whether rejected events should immediately be sent to a dead-letter topic.
+
+Mehul recommended distinguishing between invalid events and temporarily unprocessable events.
+
+Temporary failures should be retried with exponential backoff.
+
+Invalid events should eventually be routed to a dead-letter topic for investigation.
+
+The team agreed with this distinction.
+
+---
+
+## 5. Exactly-Once Processing Debate
+
+Arjun asked whether the new architecture required exactly-once processing guarantees.
+
+Vikram said true exactly-once semantics across PostgreSQL, Kafka, and external services would significantly increase implementation complexity.
+
+He recommended at-least-once delivery with idempotent consumers.
+
+Rhea asked how duplicate inventory reservations would be prevented.
+
+Vikram proposed an idempotency table containing the event ID, consumer name, processing status, and timestamp.
+
+Before applying a state mutation, the consumer would check whether the event had already been processed.
+
+Mehul warned that performing an additional database lookup for every event could significantly increase PostgreSQL load.
+
+Rhea suggested using Redis as the primary deduplication layer.
+
+Arjun rejected that approach for financial state transitions because losing Redis state could result in an event being processed again.
+
+The group agreed that PostgreSQL would remain the source of truth for idempotency records, while Redis could potentially be introduced later as an optimization.
+
+---
+
+## 6. Database Bottleneck
+
+Rhea presented database metrics from the previous seven days.
+
+The transaction database currently reaches approximately 72% CPU utilization during normal peak periods.
+
+Several queries responsible for transaction history and reconciliation perform sequential scans.
+
+The largest transaction table currently contains approximately 94 million records.
+
+Rhea proposed introducing composite indexes on `(merchant_id, created_at)` and `(customer_id, created_at)`.
+
+However, adding indexes would increase write amplification and storage consumption.
+
+Nikhil asked whether the transaction history workload could be moved to a read replica.
+
+Rhea said that was possible, but replication lag would need to be monitored because reconciliation reports currently assume relatively fresh data.
+
+The team decided to benchmark read replicas before committing to the architecture.
+
+No production database schema changes will be deployed until the benchmark is completed.
+
+---
+
+## 7. Retry Strategy
+
+Mehul proposed standardizing retry behavior across all services.
+
+The proposed policy would use exponential backoff with jitter.
+
+However, retries would not be allowed for every error.
+
+HTTP 400-level validation failures should not be retried.
+
+Transient network failures and selected 5xx responses could be retried.
+
+Payment authorization failures require special handling because blindly retrying payment requests could potentially create duplicate authorization attempts.
+
+Arjun recommended using idempotency keys for payment-provider requests.
+
+Tanya asked whether the retry policy would increase transaction completion time.
+
+Mehul acknowledged that it could.
+
+The team agreed that reliability should take priority over aggressive retrying, but the maximum retry window must be defined before implementation.
+
+The exact retry intervals remain unresolved.
+
+---
+
+## 8. Observability
+
+Mehul said the current logging infrastructure makes debugging distributed failures unnecessarily difficult.
+
+The proposed solution is to introduce OpenTelemetry tracing across the transaction lifecycle.
+
+Every transaction would receive a correlation ID that propagates through HTTP requests and Kafka messages.
+
+Metrics would include:
+
+- Transaction processing latency
+- Kafka consumer lag
+- Event retry count
+- Dead-letter queue volume
+- Database connection pool utilization
+- PostgreSQL query latency
+- Payment-provider latency
+- Transaction failure rate
+
+Nikhil suggested adding alerts when consumer lag exceeds five minutes.
+
+Mehul argued that a fixed five-minute threshold might not be appropriate for every topic.
+
+The team agreed that alert thresholds should be defined per workload rather than globally.
+
+---
+
+## 9. Security
+
+Arjun identified several security requirements.
+
+Kafka topics containing transaction information must use encryption in transit.
+
+Consumer groups must have explicit access permissions.
+
+Services should authenticate using short-lived workload credentials rather than long-lived API keys.
+
+Sensitive payment information must never be included in Kafka event payloads or application logs.
+
+Arjun also requested a threat model covering event replay, unauthorized event publication, privilege escalation, and cross-tenant data exposure.
+
+Tanya asked whether encryption at rest was necessary.
+
+Arjun said it should be enabled, but the immediate security review should focus on access control and event integrity.
+
+The group agreed that the security review must be completed before production traffic is moved to Kafka.
+
+---
+
+## 10. Migration Strategy
+
+Aditi rejected a complete cutover.
+
+The migration will use a gradual rollout.
+
+Phase one will introduce Kafka without changing the behavior of existing downstream services.
+
+Phase two will route analytics events through Kafka.
+
+Phase three will migrate inventory state propagation.
+
+Payment processing will remain on the existing synchronous workflow until the team has sufficient confidence in the event-driven architecture.
+
+Mehul recommended beginning with 1% of eligible traffic.
+
+If error rates and transaction reconciliation remain within acceptable limits for 48 hours, traffic can increase to 10%.
+
+Further increases will require explicit approval from the engineering manager and SRE.
+
+The exact percentage for the final production rollout remains undecided.
+
+---
+
+## 11. Decisions
+
+The following decisions were reached during the meeting:
+
+1. Kafka will be introduced for transaction-domain events.
+2. RabbitMQ will continue handling existing notification workloads during the initial migration.
+3. Transaction IDs will be used as Kafka partition keys.
+4. Consumers will use state-transition validation.
+5. Temporary failures will use retries with exponential backoff and jitter.
+6. Invalid events will eventually be routed to a dead-letter topic.
+7. The system will use at-least-once delivery with idempotent consumers.
+8. PostgreSQL will remain the source of truth for idempotency records.
+9. OpenTelemetry will be introduced for distributed tracing.
+10. Production migration will use gradual traffic shifting.
+11. Security review must be completed before production Kafka traffic is enabled.
+12. Payment processing will remain synchronous during the initial migration phases.
+
+---
+
+## 12. Action Items
+
+**Vikram:** Define the Kafka event schemas and transaction state machine.
+
+**Nikhil:** Create the initial Kafka infrastructure and document topic-level access policies.
+
+**Rhea:** Benchmark PostgreSQL indexing strategies and read-replica performance.
+
+**Mehul:** Define retry policies, observability requirements, and workload-specific alert thresholds.
+
+**Arjun:** Complete the threat model covering replay attacks, unauthorized event publication, and cross-tenant exposure.
+
+**Aditi:** Create the phased migration schedule and establish approval criteria for increasing production traffic.
+
+**Tanya:** Confirm the promotional campaign deadline and communicate business constraints to engineering.
+
+---
+
+## 13. Unresolved Questions
+
+Several questions remain open.
+
+The exact retry intervals have not been finalized.
+
+The team has not yet determined whether Redis should eventually be introduced as a deduplication cache.
+
+The benchmark results will determine whether read replicas are sufficient for transaction-history workloads.
+
+The final production traffic percentage for the migration has not been decided.
+
+The team also needs to determine the retention period for Kafka transaction events.
+
+Aditi concluded that the next architecture review should focus specifically on benchmark results, retry configuration, event-schema validation, and the readiness of the security review.
+
+No production migration will begin until those items have been reviewed.

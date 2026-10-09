@@ -1,0 +1,419 @@
+Meeting: Checkout Platform — Distributed Transaction & Event Architecture Review
+
+Duration: ~72 minutes
+
+Participants:
+Maya — Staff Backend Engineer
+Arjun — Principal Architect
+Neha — Payments Engineer
+Vikram — SRE
+Rohan — Database Engineer
+Isha — Security Engineer
+Daniel — Engineering Manager
+
+
+Daniel: Let's start with the checkout reliability issue. We have three separate things getting mixed together: transaction consistency, event delivery, and the migration away from the legacy order queue. I'd like us to leave this meeting with an architecture direction, but not necessarily every implementation detail.
+
+Arjun: Agreed. The current flow is basically API Gateway → Checkout Service → PostgreSQL, and then Checkout publishes an event to RabbitMQ. The problem is that database commit and message publication aren't atomic. We've had two incidents where the transaction committed but the event wasn't published.
+
+Neha: And the inverse is theoretically possible too. If RabbitMQ accepts the message and PostgreSQL rolls back, downstream services can see an order that doesn't exist.
+
+Rohan: The second case is less common because of where we're publishing today, but yes, the architecture allows it.
+
+Maya: That's why I think we should stop trying to make RabbitMQ part of the transaction boundary. PostgreSQL should remain the source of truth. We can use an outbox table and publish from there.
+
+Arjun: I'm in favor of an outbox, but I don't want the outbox processor becoming another critical bottleneck. What's the expected write volume?
+
+Rohan: Today we're around 2,500 checkout writes per minute during normal traffic. During the largest campaigns we've seen approximately 8,000 per minute. I wouldn't design the system around 8,000 as the absolute ceiling, though.
+
+Vikram: Our load tests showed the current database starts getting uncomfortable somewhere around 11,000 writes per minute. CPU was around 70% at that point, but CPU isn't the only bottleneck. Connection pool saturation started before CPU became critical.
+
+Rohan: Right. Which means adding an outbox insert to every transaction isn't free.
+
+Maya: But we're already writing the order. One additional insert shouldn't be catastrophic.
+
+Rohan: "Shouldn't" isn't the same as measured. We need a benchmark before we assume that.
+
+Daniel: Is the benchmark a blocker?
+
+Rohan: For production rollout, I think it should be.
+
+Arjun: I'd phrase that differently. The schema design can proceed before the benchmark. But the final production configuration shouldn't be locked until we know the database overhead.
+
+Daniel: Good distinction.
+
+
+Neha: There's another issue. Payment state currently changes through synchronous API calls. Some people suggested making payment authorization asynchronous too.
+
+Maya: I don't think we should do that yet. Payment authorization needs to remain synchronous until we've validated the failure semantics.
+
+Arjun: Yes. We shouldn't introduce asynchronous payment authorization just because we're introducing asynchronous events elsewhere.
+
+Neha: The payment provider itself is eventually consistent in some cases. So even with synchronous authorization, we still need to handle an authorization response arriving after a timeout.
+
+Maya: Exactly. The API timeout doesn't necessarily mean payment failed.
+
+Isha: That means we need to be careful with retry semantics. A client retrying the checkout endpoint could create two authorization attempts.
+
+Neha: We already have an idempotency key on the payment endpoint.
+
+Arjun: Is that key persisted?
+
+Neha: Yes, in PostgreSQL.
+
+Rohan: With a unique constraint?
+
+Neha: Yes.
+
+Maya: Then duplicate requests should resolve to the same payment attempt.
+
+Arjun: "Should" again depends on the exact transaction boundary. If the idempotency record and payment state aren't committed atomically, there can still be a race.
+
+Neha: They're in the same database transaction.
+
+Rohan: Same PostgreSQL database?
+
+Neha: Yes.
+
+Rohan: Then that's much cleaner.
+
+
+Vikram: On the event side, I'm still worried about Kafka. We're proposing RabbitMQ → Kafka migration, but the consumer semantics are different.
+
+Arjun: Correct. Kafka gives us durable ordered logs, but ordering is only guaranteed within a partition.
+
+Maya: We can partition by order_id.
+
+Vikram: That preserves order per order, but what about customer-level ordering? A customer can have multiple orders.
+
+Arjun: Do we actually need customer-level ordering?
+
+Maya: I don't think so.
+
+Neha: For fraud scoring, customer-level ordering could matter.
+
+Arjun: That's a consumer-specific requirement. We shouldn't impose customer-level partitioning on the entire platform just because one consumer might want it.
+
+Vikram: Customer-level partitioning also creates worse hot-key behavior for enterprise customers.
+
+Rohan: And changing the partition key later isn't trivial.
+
+Daniel: So what are we deciding?
+
+Arjun: Default Kafka partitioning should use order_id. If a downstream consumer needs stronger ordering semantics, it needs to solve that within its own domain rather than changing the platform-wide key.
+
+Maya: I'd agree with that.
+
+Neha: Fine, but fraud needs to document whether order-level ordering is actually sufficient.
+
+Daniel: That's a task, then.
+
+
+Isha: Let's talk about Kafka access. The current proposal has one shared service account.
+
+Vikram: That's not acceptable for production.
+
+Arjun: Agreed. Producers and consumers should have explicit topic-level permissions.
+
+Isha: I would actually say must.
+
+Maya: Fine, topic-level ACLs are mandatory for production.
+
+Isha: And credentials should be short-lived workload credentials rather than static secrets.
+
+Vikram: That would be ideal, but I don't want to block migration if the identity integration isn't ready.
+
+Isha: Then that's a separate rollout dependency.
+
+Daniel: Good. So explicit topic permissions are mandatory. Short-lived credentials are the preferred authentication mechanism, but they're not necessarily a hard launch blocker.
+
+
+Rohan: I want to bring up PostgreSQL indexes. The new event-processing queries will hit order_id, status, and created_at.
+
+Maya: We already have an index on order_id.
+
+Rohan: That's not enough for the reconciliation query. Something like:
+
+WHERE status = 'PENDING' AND created_at < now() - interval '10 minutes'
+
+will probably need a composite or partial index.
+
+Arjun: "Probably" needs a benchmark.
+
+Rohan: Correct. I'm not saying we should blindly add one.
+
+Vikram: Also, if reconciliation runs every minute, that query could become expensive.
+
+Rohan: We could use a read replica.
+
+Maya: But then we're reading stale data.
+
+Rohan: For reconciliation, a few seconds of replica lag may be acceptable.
+
+Neha: Not for payment status.
+
+Arjun: That's why read replicas should not become the default for transactional decisions. We can consider them for operational queries after measuring replica lag.
+
+Daniel: So no architectural decision to move transactional reads to replicas yet.
+
+Rohan: Correct. Benchmark first.
+
+
+Vikram: Now retries. We currently have inconsistent retry behavior across services. One service retries three times, another retries five times, and the payment integration has its own retry behavior.
+
+Neha: The payment provider recommends exponential backoff.
+
+Maya: We should standardize retry policies.
+
+Arjun: At least for infrastructure-generated events.
+
+Vikram: I want a maximum retry window too. Otherwise an event can sit around retrying for hours.
+
+Maya: What window?
+
+Vikram: Maybe fifteen minutes.
+
+Arjun: That's an example, not a decision.
+
+Vikram: Fair.
+
+Daniel: Is there a proposed value?
+
+Vikram: Not yet. We need to model the effect on transaction completion time.
+
+Neha: Especially because a retry can keep the checkout workflow technically alive even when the user has already timed out.
+
+Maya: We should separate user-facing transaction completion from background event retries.
+
+Arjun: Yes. The checkout API should not wait for Kafka consumer processing.
+
+Daniel: That's important. Let's capture it.
+
+Vikram: We also need dead-letter handling after the retry policy is exhausted.
+
+Maya: Agreed.
+
+
+Isha: Security question: are we putting payment details into Kafka?
+
+Neha: No raw card data. We currently store provider transaction IDs and payment status.
+
+Isha: We should explicitly prohibit sensitive payment information in event payloads and application logs.
+
+Arjun: Agreed.
+
+Vikram: What about encrypted payloads?
+
+Isha: Encryption in transit is mandatory. At-rest encryption depends on the Kafka cluster configuration and should be verified rather than assumed.
+
+Maya: Our managed Kafka provider says storage encryption is enabled.
+
+Isha: Then we need that documented as an infrastructure configuration, not just assumed from the provider.
+
+Daniel: Security review before production?
+
+Isha: Yes, especially ACLs, credential lifecycle, event payloads, and threat modeling.
+
+Daniel: Is the threat model itself blocking?
+
+Isha: The security review is a production gate. The exact threat-model scope still needs to be finalized.
+
+
+Arjun: Let's talk about the migration. We can't just switch all traffic from RabbitMQ to Kafka.
+
+Maya: I propose dual publishing first.
+
+Vikram: Dual publishing creates another failure mode. You can get one message published and the other fail.
+
+Arjun: Exactly. That's why I prefer an outbox as the single write path, then independent publishers.
+
+Rohan: The outbox can contain the canonical event and both publishers can consume it.
+
+Maya: But then during migration we may publish duplicate events into two systems.
+
+Vikram: That's fine if consumers are idempotent.
+
+Neha: Provided the event IDs are stable across both paths.
+
+Arjun: They should be generated once in the transactional boundary and reused by every publisher.
+
+Maya: That means the event ID becomes part of the outbox record.
+
+Rohan: Yes.
+
+Daniel: Are we requiring exactly-once processing?
+
+Vikram: No. Exactly-once across independent systems is too expensive and doesn't buy us enough.
+
+Arjun: At-least-once delivery with idempotent consumers is sufficient.
+
+Neha: Agreed.
+
+Maya: Then every migrated consumer needs idempotency based on event ID.
+
+Arjun: Yes.
+
+
+Vikram: One concern: Redis. Some of our consumers currently use Redis for deduplication.
+
+Maya: That's temporary.
+
+Vikram: What happens if Redis loses state?
+
+Arjun: Then the event may be processed again.
+
+Neha: Which is exactly why PostgreSQL should remain the durable idempotency source for payment-related processing.
+
+Rohan: That means an extra database lookup.
+
+Maya: Yes.
+
+Rohan: Which increases database load.
+
+Maya: Potentially.
+
+Vikram: We need to measure that before rollout.
+
+Arjun: Correct.
+
+Daniel: Is Redis deduplication staying?
+
+Vikram: Undecided. We could use Redis as a fast path and PostgreSQL as the durable check, but that adds complexity.
+
+Arjun: I'd rather benchmark without Redis first.
+
+Maya: Fine.
+
+
+Rohan: Another thing: schema evolution. If we're moving to Kafka, event schemas need compatibility rules.
+
+Arjun: Backward compatibility at minimum.
+
+Maya: What about breaking changes?
+
+Arjun: Breaking schema changes should require a new event version.
+
+Vikram: And consumers shouldn't silently accept unknown fields as if they understand them.
+
+Neha: We also need contract tests.
+
+Daniel: Is schema registry part of the migration?
+
+Arjun: Yes, but whether we use Confluent Schema Registry or the cloud provider's native registry is still open.
+
+Maya: That shouldn't block the event model design.
+
+Arjun: Agreed.
+
+
+Isha: We also haven't discussed observability.
+
+Vikram: OpenTelemetry.
+
+Maya: Traces across Kafka are important.
+
+Vikram: Trace IDs need to propagate through message headers.
+
+Arjun: Yes.
+
+Vikram: And metrics should include consumer lag, retry counts, dead-letter volume, processing latency, and outbox publishing latency.
+
+Daniel: Do we have thresholds?
+
+Vikram: Not yet. I'd rather establish baselines first.
+
+Maya: We could start with an alert if consumer lag exceeds five minutes.
+
+Vikram: That's too simplistic. Five minutes may be unacceptable for one topic and irrelevant for another.
+
+Arjun: Don't turn that into a universal threshold.
+
+Daniel: So topic-specific alert thresholds remain to be defined.
+
+
+Daniel: Let's get to migration percentages.
+
+Maya: I'd start with 5% traffic through Kafka.
+
+Vikram: I'd start with 1%.
+
+Arjun: The exact percentage isn't important yet. We need a rollback mechanism before exposing production traffic.
+
+Daniel: What conditions trigger rollback?
+
+Vikram: Elevated error rate, consumer lag, duplicate processing, or database saturation.
+
+Neha: Payment failures should have their own threshold.
+
+Arjun: Agreed.
+
+Daniel: We'll define the actual thresholds before the first production canary.
+
+
+Rohan: There's also Kafka retention. How long do we keep transaction events?
+
+Vikram: Seven days would probably be enough operationally.
+
+Isha: Compliance might require longer depending on the event content.
+
+Arjun: We shouldn't choose retention until legal and compliance confirm the requirement.
+
+Daniel: Open question.
+
+
+Daniel: Anything else?
+
+Neha: Campaign deadline. The new checkout path needs to be available before the November promotion.
+
+Maya: That's about five weeks away.
+
+Vikram: Five weeks is aggressive if we're changing infrastructure and migrating consumers.
+
+Arjun: It's achievable if we don't make every optional improvement a launch blocker.
+
+Isha: Security review can't be optional.
+
+Rohan: Neither can the database benchmark.
+
+Daniel: Agreed.
+
+Maya: Then let's define the minimum production scope:
+
+1. Outbox-based event publication.
+2. Kafka infrastructure and permissions.
+3. Order-level partitioning.
+4. At-least-once delivery with idempotent consumers.
+5. Retry and dead-letter handling.
+6. OpenTelemetry propagation.
+7. Security review.
+8. Canary migration with rollback.
+
+Arjun: I'd add schema compatibility rules.
+
+Maya: Fair.
+
+Daniel: Good. Tasks?
+
+Maya: I'll own the outbox schema and transaction-state changes.
+
+Vikram: I'll own Kafka infrastructure, ACLs, observability, and migration tooling.
+
+Rohan: I'll benchmark PostgreSQL indexing, outbox overhead, and the Redis-versus-PostgreSQL deduplication approach.
+
+Neha: I'll document payment idempotency and fraud ordering requirements.
+
+Isha: I'll own the threat model and security review.
+
+Arjun: I'll define the event contracts and migration architecture.
+
+Daniel: I'll coordinate the rollout schedule and campaign deadline.
+
+Maya: One final point: no production schema change until the database benchmark is reviewed.
+
+Rohan: Yes.
+
+Arjun: That's a reasonable gate.
+
+Daniel: Agreed. Let's document that as a constraint rather than an implementation detail.
+
+Meeting ends.

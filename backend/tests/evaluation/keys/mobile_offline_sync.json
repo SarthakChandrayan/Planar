@@ -1,0 +1,37 @@
+{
+  "name": "Mobile Offline Mode Planning",
+  "match_title": "Mobile Offline",
+  "transcript": "samples/mobile_offline_sync.txt",
+  "items": [
+    {"id": "D-sqlite", "text": "SQLite for local drafts on both platforms, GRDB on iOS and Room on Android, not key-value stores", "categories": ["decision", "requirement"], "lines": [11, 12, 13, 14, 45]},
+    {"id": "D-lww", "text": "Last-write-wins per field using server receive time; CRDTs revisited next year", "categories": ["decision", "requirement"], "lines": [18, 31, 45]},
+    {"id": "R-sync-api", "text": "Sync API must accept per-field timestamps and return the merged record", "categories": ["requirement"], "lines": [19], "strength": "must"},
+    {"id": "R-never-lose", "text": "A technician must never lose a draft, even if the app is killed mid-save", "categories": ["requirement"], "lines": [20], "strength": "never"},
+    {"id": "R-transactional", "text": "Writes transactional and flushed on every field change, not on screen exit", "categories": ["requirement", "decision"], "lines": [21]},
+    {"id": "D-photo-queue", "text": "Photos upload separately from form data in a background resumable upload queue; form sync does not wait for photos", "categories": ["decision", "requirement"], "lines": [24, 25, 45]},
+    {"id": "R-log-overwrites", "text": "Log every overwrite so support can recover data", "categories": ["requirement", "decision"], "lines": [32, 40]},
+    {"id": "D-urlsession", "text": "Use background URLSession on iOS so the OS keeps transfers going", "categories": ["decision", "requirement"], "lines": [34]},
+    {"id": "D-no-crdt", "text": "No full CRDTs this cycle", "categories": ["decision", "requirement"], "lines": [17, 18], "optional": true},
+
+    {"id": "T-eli", "text": "Pull device storage numbers from MDM reports by next Wednesday", "categories": ["task"], "lines": [27, 28], "owner": "Eli"},
+    {"id": "T-ben", "text": "Prototype the SQLite draft store with GRDB including crash-safe writes by Friday", "categories": ["task"], "lines": [36, 37], "owner": "Ben"},
+    {"id": "T-chen", "text": "Prototype the draft store on Android with Room by Friday", "categories": ["task"], "lines": [38, 39], "owner": "Chen"},
+    {"id": "T-dee", "text": "Add per-field timestamps to the sync API and write the merge endpoint; draft API spec by Thursday", "categories": ["task"], "lines": [40, 41], "owner": "Dee"},
+    {"id": "T-ana", "text": "Design the resumable photo upload queue", "categories": ["task"], "lines": [42], "owner": "Ana"},
+
+    {"id": "K-clock", "text": "Wrong device clocks would make last-write-wins silently overwrite newer edits", "categories": ["risk"], "lines": [30, 31], "optional": true},
+    {"id": "K-long-offline", "text": "Queued edits from a phone offline for days could overwrite a newer online edit", "categories": ["risk"], "lines": [31, 32]},
+    {"id": "K-ios-kill", "text": "iOS can kill background uploads if the app is suspended too long, so large photo queues may never finish", "categories": ["risk"], "lines": [33]},
+    {"id": "K-signal", "text": "Technicians lose signal in basements", "categories": ["risk"], "lines": [10], "optional": true},
+    {"id": "K-photo-size", "text": "Photos are large; an inspection can have twenty photos", "categories": ["risk"], "lines": [23], "optional": true},
+
+    {"id": "Q-storage-cap", "text": "Device storage cap, pending fleet storage data", "categories": ["open_question"], "lines": [26, 27, 45]},
+    {"id": "Q-admin-web", "text": "Whether the admin web app also needs offline mode", "categories": ["open_question"], "lines": [43, 44]}
+  ],
+  "forbidden": [
+    {"text": "use CRDTs", "if_affirmed": true, "categories": ["decision", "requirement"], "lines": [17], "why": "rejected for this cycle"},
+    {"text": "last-write-wins device time", "if_affirmed": true, "categories": ["decision", "requirement"], "lines": [30], "why": "server receive time was chosen, not device time"},
+    {"text": "conflict resolution two technicians", "categories": ["open_question"], "lines": [16, 17, 18], "why": "answered: last-write-wins per field"}
+  ],
+  "forbidden_terms": ["event sourcing"]
+}

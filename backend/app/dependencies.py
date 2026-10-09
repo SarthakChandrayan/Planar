@@ -45,6 +45,7 @@ def build_analyzer(llm: LLMProvider, settings: Settings) -> MeetingAnalyzer:
         llm,
         chunk_max_tokens=settings.chunk_max_tokens,
         max_transcript_chars=settings.max_transcript_chars,
+        second_look=settings.analysis_second_look,
     )
 
 

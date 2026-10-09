@@ -174,6 +174,26 @@ npm run lint
 npm run build
 ```
 
+## Measuring accuracy
+
+Five sample meetings have hand-labelled answer keys in
+`backend/tests/evaluation/keys/`: what each meeting really decided, required,
+assigned, worried about and left open, with the transcript lines that say so,
+plus things that must not be extracted (an answered question as an open one).
+Items match by cited line, not wording, so the score does not reward a phrasing.
+
+```powershell
+cd backend
+.\.venv\Scripts\python scripts\score.py                    # score the latest saved run of each keyed meeting (no model)
+.\.venv\Scripts\python scripts\evaluate.py --name current  # run all five with the model and score them (~40 min)
+```
+
+Judge every change by these scores across all five meetings, never by one
+report. With qwen3:8b (October 2026), before the second look: 81% precision, 60%
+recall across the five; the second look on decisions and requirements raised
+that to about 76% / 68% (combined from the evaluation runs). The model misses items more often than it invents them, so recall is the
+thing to improve.
+
 CI runs the fast backend tests, lint and the frontend build on every push.
 
 ## Scope

@@ -1,0 +1,56 @@
+{
+  "name": "Quarterly Product Launch Planning Meeting",
+  "match_title": "Quarterly Product Launch",
+  "transcript": "samples/quarterly_product_launch.txt",
+  "items": [
+    {"id": "D-price", "text": "Premium package launches at ₹2,499 per month", "categories": ["decision", "requirement"], "lines": [22, 26, 28, 146, 148, 202]},
+    {"id": "D-discount", "text": "Existing customers get a 15% upgrade discount within the first 30 days, not publicly advertised", "categories": ["decision", "requirement"], "lines": [146, 148, 150, 203], "must_include": ["15%", "30"]},
+    {"id": "R-benefits-list", "text": "A clearly defined list of premium benefits before sales actively promotes the package", "categories": ["requirement", "decision"], "lines": [46]},
+    {"id": "D-consultations", "text": "Quarterly consultation sessions included in the premium package, optional, while customer numbers stay manageable", "categories": ["decision", "requirement"], "lines": [52, 54, 206]},
+    {"id": "D-budget", "text": "Initial marketing campaign budget is ₹3 lakh", "categories": ["decision", "requirement"], "lines": [72, 74, 76, 204]},
+    {"id": "D-more-spend", "text": "Additional marketing spending requires approval based on campaign performance thresholds", "categories": ["decision", "requirement"], "lines": [72, 76, 205]},
+    {"id": "D-lead-tiers", "text": "Leads split into high, medium and low intent: direct calls, personalized emails, existing newsletter", "categories": ["decision", "requirement"], "lines": ["86-92"], "optional": true},
+    {"id": "D-no-hiring", "text": "No additional sales or support hiring before launch", "categories": ["decision", "requirement"], "lines": [98, 100, 164, 210]},
+    {"id": "D-reassess-staffing", "text": "Reassess staffing after the first four weeks", "categories": ["decision", "task", "requirement"], "lines": [102]},
+    {"id": "D-launch-date", "text": "November 4 launch date remains the target", "categories": ["decision", "requirement"], "lines": [108, 122, 207, 231]},
+    {"id": "D-checkpoint", "text": "October 28 is the internal readiness decision point", "categories": ["decision", "requirement"], "lines": [122, 208]},
+    {"id": "D-fallback-date", "text": "If the critical feature is not stable by October 28 the launch moves to November 11", "categories": ["decision", "requirement"], "lines": [124, 209]},
+    {"id": "R-faq", "text": "Prepare frequently asked questions and onboarding materials to reduce repetitive support requests", "categories": ["requirement", "task", "decision"], "lines": [168]},
+    {"id": "D-not-only-revenue", "text": "Launch not evaluated solely on revenue; retention matters more than maximizing initial sales", "categories": ["decision", "requirement"], "lines": [174, 192], "optional": true},
+    {"id": "R-metrics", "text": "Success metrics: premium upgrades, lead conversion rate, trial-to-paid conversion, customer acquisition cost, 30-day churn, support request volume, response time, webinar registrations, marketing-qualified leads", "categories": ["requirement"], "lines": ["176-186"], "optional": true},
+    {"id": "R-targets", "text": "Specific metric targets established before launch", "categories": ["requirement", "task"], "lines": [188, 190]},
+    {"id": "R-dashboard", "text": "A dashboard available during the first week", "categories": ["requirement", "task"], "lines": [190]},
+    {"id": "D-evaluation-period", "text": "First 30 days are the primary evaluation period", "categories": ["decision", "requirement"], "lines": [194, 211]},
+
+    {"id": "T-sarah", "text": "Finalize the premium package feature list and coordinate the October 28 readiness review", "categories": ["task"], "lines": [217], "owner": "Sarah"},
+    {"id": "T-rahul", "text": "Prepare the first-stage ₹3 lakh marketing campaign and define performance thresholds for additional spending", "categories": ["task"], "lines": [219], "owner": "Rahul"},
+    {"id": "T-emily", "text": "Segment the 120 existing leads and create the outreach strategy", "categories": ["task"], "lines": [221], "owner": "Emily"},
+    {"id": "T-karan", "text": "Prepare the customer-success contingency plan and premium onboarding documentation", "categories": ["task"], "lines": [166, 223], "owner": "Karan"},
+    {"id": "T-meera", "text": "Identify potential temporary support resources without committing to additional hiring", "categories": ["task"], "lines": [225], "owner": "Meera"},
+    {"id": "T-jason", "text": "Finalize the financial model and acceptable customer acquisition cost thresholds", "categories": ["task"], "lines": [227], "owner": "Jason"},
+    {"id": "T-ananya", "text": "Approve the final launch communication and review the October 28 readiness assessment", "categories": ["task"], "lines": [229], "owner": "Ananya"},
+
+    {"id": "K-pricing-confusion", "text": "Confusion and mixed reactions around the ₹2,499 pricing", "categories": ["risk"], "lines": [20, 22]},
+    {"id": "K-price-cut", "text": "Reducing the price before launch makes it hard to raise later without customer dissatisfaction", "categories": ["risk"], "lines": [26]},
+    {"id": "K-benefit-expectations", "text": "Customers expect more benefits for paying about ₹1,000 more per month", "categories": ["risk"], "lines": [38]},
+    {"id": "K-sales-promises", "text": "Sales representatives might promise features the product team has not committed to", "categories": ["risk"], "lines": [44]},
+    {"id": "K-cs-capacity-calls", "text": "Customer success lacks capacity for personalized calls to every premium customer", "categories": ["risk"], "lines": [50]},
+    {"id": "K-small-campaign", "text": "A smaller campaign could limit awareness and make the launch look unsuccessful", "categories": ["risk"], "lines": [66, 68]},
+    {"id": "K-sales-workload", "text": "Sales team may need temporary help if lead volume increases significantly", "categories": ["risk"], "lines": [94, 96]},
+    {"id": "K-features-late", "text": "Two features still in testing; the critical one may not be stable by October 28, delaying launch", "categories": ["risk"], "lines": [110, 112, 120, 124]},
+    {"id": "K-delay-commitments", "text": "Delaying the launch would require changing external marketing commitments", "categories": ["risk"], "lines": [116], "optional": true},
+    {"id": "K-lower-price-value", "text": "Lowering the price could signal the product is worth less", "categories": ["risk"], "lines": [144], "optional": true},
+    {"id": "K-support-surge", "text": "A strong launch could flood customer success; beyond about 50 new premium accounts in the first month response times could rise substantially", "categories": ["risk"], "lines": [156, 158, 160, 162]},
+
+    {"id": "Q-cs-demand", "text": "Whether the existing customer-success team can handle demand if the launch significantly exceeds expectations", "categories": ["open_question"], "lines": [233]},
+    {"id": "Q-enough-evidence", "text": "Enough evidence to proceed with the proposed price; evaluate conversion after launch", "categories": ["open_question"], "lines": [24, 26], "optional": true}
+  ],
+  "forbidden": [
+    {"text": "launch at ₹1,999 Option C", "if_affirmed": true, "categories": ["decision", "requirement"], "lines": [138, 142, 144], "why": "Option C was rejected"},
+    {"text": "20% introductory discount Option B", "if_affirmed": true, "categories": ["decision", "requirement"], "lines": [136, 140], "why": "Option B was not chosen; the discount is 15%"},
+    {"text": "₹8 lakh campaign budget", "if_affirmed": true, "categories": ["decision", "requirement"], "lines": [64], "why": "the original proposal; ₹3 lakh was decided"},
+    {"text": "hire temporary sales staff", "if_affirmed": true, "categories": ["decision", "requirement", "task"], "lines": [98, 100], "why": "rejected for now"},
+    {"text": "customer success must handle 50 accounts", "categories": ["requirement", "decision"], "lines": [160], "why": "Karan's estimate, not a requirement"}
+  ],
+  "forbidden_terms": []
+}
