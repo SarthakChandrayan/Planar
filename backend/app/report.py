@@ -97,7 +97,7 @@ def _plan(plan: ImplementationPlan) -> list[str]:
         when = f" · {step.when}" if step.when else ""
         out += [f"{index}. **{step.title}**{when}{suffix}", f"   {step.description}"]
     if plan.acceptance_criteria:
-        out += ["", "### Done when", ""]
+        out += ["", "### Done when (suggested)", ""]
         out += [f"- [ ] {criterion}" for criterion in plan.acceptance_criteria]
     out.append("")
     return out

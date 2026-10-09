@@ -4,145 +4,164 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planar</title>
-<meta name="description" content="Planar turns a meeting transcript into decisions, requirements, tasks, risks, open questions and an implementation plan, each linked to the lines it came from. Runs on a laptop with a local model.">
-<meta property="og:title" content="Planar: turn a meeting into a plan">
+<meta name="description" content="Planar turns a meeting transcript into decisions, requirements, tasks, risks, open questions and an implementation plan, each traced to the lines it came from. Runs on a laptop with a local model.">
+<meta property="og:title" content="Planar: from meeting to plan, with the receipts">
 <meta property="og:description" content="Decisions, requirements, tasks, risks and a plan from a meeting transcript, every item traced to its source lines. Local model, no cloud.">
-<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfbf9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0f11" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" sizes="32x32" href="app/brand/icon-32.png">
 <link rel="apple-touch-icon" href="app/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>try { const t = localStorage.getItem("planar.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="bar">
-  <div class="wrap bar-inner">
-    <a class="brand" href="#top" aria-label="Planar">
-      <img src="app/brand/icon-64.png" width="28" height="28" alt="">
-      <span class="wordmark" aria-hidden="true"></span>
+<header class="top">
+  <div class="shell top-inner">
+    <a class="brand" href="#" aria-label="Planar home">
+      <img src="app/brand/icon-64.png" width="26" height="26" alt="">
+      <span>Planar</span>
     </a>
-    <nav class="nav">
-      <a href="#demo" class="keep">Demo</a>
-      <a href="#how">How it works</a>
-      <a href="#accuracy">Accuracy</a>
-      <a href="#run" class="keep">Run it</a>
-      <a href="https://github.com/SarthakChandrayan/Planar">GitHub</a>
+    <nav class="links">
+      <a href="#demo">Demo</a>
+      <a href="#how" class="wide">How it works</a>
+      <a href="#accuracy" class="wide">Accuracy</a>
+      <a href="#run">Run locally</a>
+      <a href="https://github.com/SarthakChandrayan/Planar" class="wide">GitHub</a>
     </nav>
-    <button class="icon-btn" id="theme" type="button" aria-label="Switch theme" title="Switch theme"></button>
+    <button class="theme" id="theme" type="button" aria-label="Switch theme"></button>
   </div>
 </header>
 
-<main id="top">
-  <section class="wrap hero">
-    <div>
-      <p class="eyebrow">Meeting → plan · runs on a laptop</p>
-      <h1>Turn a meeting into a plan you can check.</h1>
-      <p class="lead">Paste a meeting transcript. Planar pulls out the <b class="k k-dec">decisions</b>, <b class="k k-req">requirements</b>, <b class="k k-task">tasks</b>, <b class="k k-risk">risks</b> and <b class="k k-q">open questions</b>, links each one to the lines that said it, and drafts an implementation plan. A local model does the reading, so the transcript never leaves the machine.</p>
-      <div class="cta">
-        <a class="btn primary" href="#demo">Explore the demo</a>
-        <a class="btn" href="#run">Run it yourself</a>
-      </div>
-      <p class="byline">qwen3:8b on a 16 GB laptop · about 4–10 minutes a meeting · nothing leaves the machine</p>
+<main>
+  <!-- ======================================================== hero -->
+  <section class="hero shell">
+    <p class="pill"><span class="dot"></span>Local model · every item traced to the transcript</p>
+    <h1>From meeting to plan,<br><em>with the receipts.</em></h1>
+    <p class="sub">Paste a transcript. Planar pulls out the
+      <span class="kw kw-dec">decisions</span>, <span class="kw kw-req">requirements</span>,
+      <span class="kw kw-task">tasks</span>, <span class="kw kw-risk">risks</span> and
+      <span class="kw kw-q">open questions</span>, then drafts a plan, and shows you the exact line behind each one.</p>
+    <div class="actions">
+      <a class="button solid" href="#demo">Explore real runs</a>
+      <a class="button" href="#run">Run it on your laptop</a>
     </div>
-    <figure class="sample" aria-label="Example: items Planar extracted, each linked to its transcript line">
-      <div class="sample-transcript">
-        <p class="sample-label">Transcript</p>
-        <p><span class="ln">L72</span>RabbitMQ is currently stable for notification workloads, and migrating it simultaneously would increase operational risk.</p>
-        <p class="hit-dec"><span class="ln">L76</span>The team therefore decided that RabbitMQ would remain responsible for existing notification workloads during the first migration phase.</p>
-        <p class="hit-risk"><span class="ln">L130</span>Mehul warned that performing an additional database lookup for every event could significantly increase PostgreSQL load.</p>
-        <p class="hit-q"><span class="ln">L312</span>The team also needs to determine the retention period for Kafka transaction events.</p>
+
+    <figure class="trace" id="trace" aria-label="How one recorded run traces transcript lines to record items to plan steps">
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+      <div class="col">
+        <p class="col-head">Transcript</p>
+        <p class="line" data-id="L130"><b>L130</b>Mehul warned that an additional database lookup for every event could significantly increase PostgreSQL load.</p>
+        <p class="line" data-id="L160"><b>L160</b>No production database schema changes will be deployed until the benchmark is completed.</p>
+        <p class="line" data-id="L223"><b>L223</b>Consumer groups must have explicit access permissions.</p>
+        <p class="line" data-id="L268"><b>L268</b>RabbitMQ will continue handling existing notification workloads during the initial migration.</p>
+        <p class="line" data-id="L286"><b>L286</b>Nikhil: Create the initial Kafka infrastructure and document topic-level access policies.</p>
+        <p class="line" data-id="L288"><b>L288</b>Rhea: Benchmark PostgreSQL indexing strategies and read-replica performance.</p>
       </div>
-      <ul class="sample-items">
-        <li class="it-dec"><span class="kind">Decision</span>RabbitMQ keeps notification workloads during the first migration phase.<span class="cite">L76</span></li>
-        <li class="it-risk"><span class="kind">Risk</span>An extra database lookup per event could significantly increase PostgreSQL load.<span class="cite">L130</span></li>
-        <li class="it-q"><span class="kind">Open question</span>How long should Kafka transaction events be kept?<span class="cite">L312</span></li>
-      </ul>
-      <figcaption>From the Distributed Platform sample in the demo</figcaption>
+      <div class="col">
+        <p class="col-head">Meeting record</p>
+        <p class="item k-risk" data-id="RSK-003" data-from="L130"><i>Risk</i>Additional database lookups could significantly increase PostgreSQL load.</p>
+        <p class="item k-req" data-id="REQ-009" data-from="L160" data-to="STEP-003"><i>Requirement</i>Database schema changes must not be deployed until benchmark results are available.</p>
+        <p class="item k-req" data-id="REQ-005" data-from="L223" data-to="STEP-002"><i>Requirement</i>Consumer groups must have explicit access permissions.</p>
+        <p class="item k-dec" data-id="DEC-002" data-from="L268" data-to="STEP-002"><i>Decision</i>RabbitMQ keeps notification workloads during the initial migration.</p>
+        <p class="item k-task" data-id="TSK-002" data-from="L286" data-to="STEP-002"><i>Task · Nikhil</i>Create Kafka infrastructure and access policies.</p>
+        <p class="item k-task" data-id="TSK-003" data-from="L288" data-to="STEP-003"><i>Task · Rhea</i>Benchmark PostgreSQL indexing and read-replica performance.</p>
+      </div>
+      <div class="col col-plan">
+        <p class="col-head">Plan</p>
+        <p class="step" data-id="STEP-003"><span class="n">3</span>Benchmark PostgreSQL indexing and read-replica performance<small>Rhea</small></p>
+        <p class="step" data-id="STEP-002"><span class="n">2</span>Create Kafka infrastructure and access policies<small>Nikhil</small></p>
+      </div>
+      <figcaption>Recorded run on the Distributed Platform sample. Hover an item to follow its trail.</figcaption>
     </figure>
   </section>
 
-  <section class="wrap section" id="demo">
-    <div class="head">
-      <span class="num">01</span><h2>Live demo</h2>
-      <p>Real runs on sample meetings, recorded on the laptop above and shown in the actual Planar interface. Nothing was edited. Open a meeting, click any item to see the transcript lines behind it, and try the plan map.</p>
-    </div>
-    <div class="window">
-      <div class="win-bar">
-        <span class="dots"><i></i><i></i><i></i></span>
-        <span class="addr">localhost:5173 · Planar</span>
-        <a class="win-open" href="app/" target="_blank" rel="noopener">open full screen ↗</a>
+  <!-- ======================================================== demo -->
+  <section class="band" id="demo">
+    <div class="shell">
+      <div class="intro">
+        <h2>Explore real runs</h2>
+        <p>The actual Planar interface, replaying runs recorded on a 16 GB laptop with qwen3:8b. Pick a meeting, open any item to see the lines behind it, and try the plan map. Nothing here was edited.</p>
       </div>
-      <iframe id="demo-frame" src="app/" title="Planar demo" loading="lazy"></iframe>
+      <div class="meetings" id="meetings" role="tablist" aria-label="Sample meetings"></div>
+      <div class="stage">
+        <iframe id="demo-frame" src="app/" title="Planar demo" loading="lazy"></iframe>
+      </div>
+      <p class="aside">A browser can't run an 8B model, so this replays recorded output. <a href="app/" target="_blank" rel="noopener">Open the demo on its own page ↗</a></p>
     </div>
-    <p class="note">The browser can't run an 8B model, so the demo replays recorded output. Analysing your own meeting needs the app running locally.</p>
   </section>
 
-  <section class="wrap section" id="how">
-    <div class="head">
-      <span class="num">02</span><h2>How it works</h2>
-      <p>A small model does one narrow job at a time, and the backend checks everything it says against the transcript before keeping it.</p>
+  <!-- ======================================================== how -->
+  <section class="shell split" id="how">
+    <div class="intro sticky">
+      <h2>How it works</h2>
+      <p>A small model does one narrow job at a time. The backend checks everything it says against the transcript before keeping it.</p>
     </div>
-    <ol class="pipeline">
+    <ol class="flow">
       <li>
-        <span class="tag">read</span>
-        <h3>Number the lines</h3>
-        <p>Speakers and timestamps are detected and every non-blank line gets a number. Long meetings are split into overlapping chunks instead of being cut off.</p>
+        <span class="mark k-dec"></span>
+        <h3>Read the meeting</h3>
+        <p>Speakers and timestamps are detected and every line is numbered. Long meetings are split into overlapping chunks instead of being cut off.</p>
+        <code>numbered lines · speakers · chunks</code>
       </li>
       <li>
-        <span class="tag">extract</span>
-        <h3>Focused passes</h3>
-        <p>Decisions, then requirements, tasks, and risks with open questions. Each pass is a separate call, constrained to a JSON schema, citing line numbers rather than quoting. A second look asks only for what the first one missed.</p>
+        <span class="mark k-req"></span>
+        <h3>Extract, one job at a time</h3>
+        <p>Separate passes for choices, decisions, requirements, tasks, and risks with open questions. The model cites line numbers instead of quoting, and a second look asks only for what it missed.</p>
+        <code>JSON schema · cached transcript prefix</code>
       </li>
       <li>
-        <span class="tag">check</span>
-        <h3>Ground every item</h3>
-        <p>The cited lines must support the claim. "Should" stays "should", numbers and dates must exist in the meeting, an answered question is not open, and a rule restated as a risk is dropped.</p>
+        <span class="mark k-risk"></span>
+        <h3>Check every claim</h3>
+        <p>Cited lines must support the item. "Should" stays "should", numbers and dates must exist in the meeting, and a choice the meeting left open can't be reported as decided.</p>
+        <code>grounding · faithfulness checks</code>
       </li>
       <li>
-        <span class="tag">link</span>
-        <h3>Trace and plan</h3>
-        <p>Links between items come from shared evidence, not the model. Plan steps cite the decisions, requirements and tasks they apply, and the plan map draws why → what → how → who.</p>
+        <span class="mark k-step"></span>
+        <h3>Link and plan</h3>
+        <p>Links come from shared evidence, not the model's say-so. Plan steps cite the decisions, requirements and tasks they deliver, and the plan map draws why → what → how → who.</p>
+        <code>traceability · plan map · Markdown export</code>
       </li>
     </ol>
-    <div class="facts-grid">
-      <div><b>Line-level evidence</b><span>Click any item to see exactly what was said</span></div>
-      <div><b>Owners and due dates</b><span>Kept only if the transcript names them</span></div>
-      <div><b>Plan map</b><span>Decisions → requirements → steps → owners</span></div>
-      <div><b>Markdown export</b><span>With a Mermaid version of the plan map</span></div>
-      <div><b>Time estimates</b><span>Learned from this machine's past runs</span></div>
-      <div><b>Background runs</b><span>Close the tab; the run keeps going</span></div>
-    </div>
   </section>
 
-  <section class="wrap section" id="accuracy">
-    <div class="head">
-      <span class="num">03</span><h2>Measured accuracy</h2>
-      <p>Each sample meeting has a hand-written answer key: what was really decided, required, assigned, worried about and left open, with the lines that say so. Output is matched by line, not wording, so the score doesn't reward a phrasing.</p>
+  <!-- ======================================================== accuracy -->
+  <section class="shell" id="accuracy">
+    <div class="intro wide">
+      <h2>Measured, not eyeballed</h2>
+      <p>Each sample meeting has a hand-written answer key listing what was really decided, required, assigned, worried about and left open, with the lines that say so. Output is matched by line, not by wording.</p>
     </div>
-    <div class="table-wrap">
-      <table class="scores">
-        <thead><tr><th>Meeting in the demo</th><th>Items right</th><th>Real items found</th><th>Precision</th><th>Recall</th></tr></thead>
-        <tbody id="scores"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+    <div class="stats">
+      <div><span class="big" id="stat-precision">–</span><span class="label">of extracted items are right</span></div>
+      <div><span class="big" id="stat-recall">–</span><span class="label">of what the meetings contained was found</span></div>
+      <p class="reading">The model misses things more often than it invents them, so recall is where the work goes. Every change is scored across all keyed meetings before it is kept; ideas that read well but scored worse were measured and removed.</p>
+    </div>
+    <div class="table">
+      <table>
+        <thead><tr><th>Meeting in the demo</th><th>Right</th><th>Found</th><th>Precision</th><th>Recall</th></tr></thead>
+        <tbody id="scores"><tr><td colspan="5" class="quiet">Loading…</td></tr></tbody>
       </table>
     </div>
-    <div class="findings">
-      <p><b>What the scores say.</b> The model misses things more often than it invents them. In these recorded runs about 9 in 10 extracted items are right, but only about 6 in 10 real items are found. A "second look" pass, added after these runs and re-measured on five meetings, lifts recall to about 7 in 10 with no more invented items.</p>
-      <p><b>How it got here.</b> Every change is judged by these scores across all meetings, never by one good-looking report. Ideas that sounded better but scored worse, such as extracting one topic at a time, were measured and removed.</p>
-    </div>
   </section>
 
-  <section class="wrap section" id="run">
-    <div class="head">
-      <span class="num">04</span><h2>Run it yourself</h2>
-      <p>Windows, macOS or Linux with Python 3.12, Node 22 and <a href="https://ollama.com">Ollama</a>. 16 GB of RAM is enough for the 8B model.</p>
+  <!-- ======================================================== run -->
+  <section class="shell split" id="run">
+    <div class="intro">
+      <h2>Run it on your laptop</h2>
+      <p>Python 3.12, Node 22 and <a href="https://ollama.com">Ollama</a>. 16 GB of RAM is enough for the 8B model; a meeting takes about 4–10 minutes.</p>
+      <ul class="notes">
+        <li>Intel graphics: <code>OLLAMA_IGPU_ENABLE=1</code> roughly halves run time.</li>
+        <li>Runs keep going in the background if you close the tab.</li>
+        <li>Score a run against the answer keys with <code>scripts/score.py</code>.</li>
+      </ul>
     </div>
-    <div class="run">
-      <div>
-        <h3>Set up</h3>
-<pre class="code"><span class="c"># the model, about 5 GB</span>
+    <div class="code">
+      <button class="copy" id="copy" type="button">Copy</button>
+<pre id="setup"><span class="c"># model (~5 GB) and code</span>
 ollama pull qwen3:8b
-
 git clone https://github.com/SarthakChandrayan/Planar
 cd Planar
 
@@ -157,28 +176,17 @@ cd frontend
 npm install
 cd ..
 
-<span class="c"># use the 8B model</span>
-echo OLLAMA_MODEL=qwen3:8b &gt; .env</pre>
-      </div>
-      <div>
-        <h3>Start</h3>
-<pre class="code"><span class="c"># terminal 1</span>
-ollama serve
-
-<span class="c"># terminal 2: backend + frontend</span>
-.\start.ps1</pre>
-        <p class="small">Open <code>localhost:5173</code>, paste a transcript or pick a sample, and press Analyze. On a laptop with Intel graphics, enabling Ollama's Vulkan backend (<code>OLLAMA_IGPU_ENABLE=1</code>) roughly halves the run time.</p>
-        <p class="small">Score a run against the answer keys: <code>backend\.venv\Scripts\python backend\scripts\score.py</code></p>
-      </div>
+<span class="c"># use the 8B model, then start</span>
+echo OLLAMA_MODEL=qwen3:8b &gt; .env
+ollama serve          <span class="c"># in its own terminal</span>
+.\start.ps1           <span class="c"># opens localhost:5173</span></pre>
     </div>
   </section>
 </main>
 
-<footer>
-  <div class="wrap foot">
-    <span>Planar · built by <a href="https://github.com/SarthakChandrayan">Sarthak Chandrayan</a></span>
-    <span><a href="https://github.com/SarthakChandrayan/Planar">source on GitHub</a></span>
-  </div>
+<footer class="shell foot">
+  <span><img src="app/brand/icon-32.png" width="16" height="16" alt=""> Planar, by <a href="https://github.com/SarthakChandrayan">Sarthak Chandrayan</a></span>
+  <a href="https://github.com/SarthakChandrayan/Planar">Source on GitHub</a>
 </footer>
 
 <script src="site.js"></script>

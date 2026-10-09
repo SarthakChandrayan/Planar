@@ -27,7 +27,6 @@ from app.planning.prompts import build_implementation_plan_prompt
 from app.planning.schemas import (
     PLAN_SCHEMA,
     ExtractedImplementationPlan,
-    ExtractedOutcome,
     ExtractedPlanStep,
 )
 from app.progress import NullProgress, Progress
@@ -40,10 +39,7 @@ _EMPTY_SUMMARY = (
 )
 _MAX_EVIDENCE_PER_STEP = 3
 _MAX_CRITERIA = 20
-_MAX_OUTCOMES = 12
 _MAX_WHEN_CHARS = 48
-# An outcome may rephrase the items it cites, but must stay about them.
-_OUTCOME_MIN_COVERAGE = 0.4
 _EMPTY_WHEN = frozenset({"", "n/a", "na", "none", "tbd", "unknown", "-", "not specified"})
 _DUPLICATE_CRITERION_SIMILARITY = 0.6
 # An ID cited on at least this many steps, and on more than this share of
@@ -87,9 +83,8 @@ class ImplementationPlanner:
     lines. Tasks the model leaves out are appended as their own steps.
 
     Model-written text that states facts is checked against the record: a
-    step's "when" and the plan's outcomes may not contain a number or date the
-    record lacks. A failing outcome falls back to the cited decision's own
-    words; a failing "when" is dropped.
+    step's "when" may not contain a number or date the record lacks, or it is
+    dropped. The plan's "done when" is its tasks' suggested criteria.
     """
 
     def __init__(self, llm: LLMProvider) -> None:
@@ -191,9 +186,9 @@ def _to_domain(
         for index, draft in enumerate(drafts, start=1)
     ]
 
-    criteria = _outcomes(extracted.outcomes, drafts, decisions, requirements)
-    if not criteria:
-        criteria = _criteria_from_tasks(drafts, tasks)
+    # "Done when" is the finished work, from each task's suggested criteria;
+    # decisions are constraints on the plan, not results of it.
+    criteria = _criteria_from_tasks(drafts, tasks)
     summary = _grounded_summary(extracted.summary, f"{record_text} {_evidence_text(analysis)}") or (
         f"{len(steps)} implementation steps covering {len(requirements)} requirements "
         f"and {len(tasks)} tasks."
@@ -540,46 +535,6 @@ def _grounded_when(raw: str, record_text: str) -> str | None:
     return when
 
 
-def _outcomes(
-    extracted: list[ExtractedOutcome],
-    drafts: list[_StepDraft],
-    decisions: dict[str, Decision],
-    requirements: dict[str, Requirement],
-) -> list[str]:
-    """Plan-level "done when": checked outcomes, else the decisions the plan applies."""
-    statements = {**{k: v.statement for k, v in decisions.items()},
-                  **{k: v.statement for k, v in requirements.items()}}
-    outcomes: list[str] = []
-
-    def add(text: str) -> None:
-        if text and not any(similarity(text, kept) >= 0.6 for kept in outcomes):
-            outcomes.append(text)
-
-    for item in extracted:
-        cited = [statements[i] for i in item.ids if i in statements]
-        if not cited:
-            continue
-        if len(cited) > 1:
-            # "OpenTelemetry will be introduced and consumer groups will have
-            # explicit permissions" joins unrelated items: one per line.
-            for statement in cited:
-                add(statement)
-            continue
-        source = " ".join(cited)
-        text = item.text.strip()
-        if text and not adds_facts(text, source) and coverage(text, source) >= _OUTCOME_MIN_COVERAGE:
-            add(text)
-        else:
-            logger.info("implementation_plan_outcome_replaced text=%s", text)
-            add(cited[0])
-    if outcomes:
-        return outcomes[:_MAX_OUTCOMES]
-
-    # The model gave none: the decisions the plan applies, in plan order.
-    for draft in drafts:
-        for item_id in draft.decision_ids:
-            add(statements[item_id])
-    return outcomes[:_MAX_OUTCOMES]
 
 
 def _keep_known(

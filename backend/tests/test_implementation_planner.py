@@ -243,27 +243,8 @@ def test_step_when_is_kept_only_if_its_dates_are_in_the_record() -> None:
     assert plan.steps[-1].related_task_ids == ["TSK-002"]
 
 
-def test_outcomes_are_checked_against_the_items_they_cite() -> None:
-    plan = _plan_with(
-        steps=[STEP],
-        outcomes=[
-            {"text": "Repeated charge requests honor the Idempotency-Key header", "ids": ["REQ-001"]},
-            {"text": "Postgres unique constraint handles 10,000 keys per second", "ids": ["DEC-001"]},
-            {"text": "Something unrelated", "ids": ["DEC-404"]},
-        ],
-    )
-    assert plan.acceptance_criteria == [
-        "Repeated charge requests honor the Idempotency-Key header",
-        # Invented number: replaced by the decision's own words.
-        "Use the existing Postgres unique constraint for idempotency keys.",
-    ]
 
 
-def test_without_outcomes_the_plan_is_done_when_its_decisions_hold() -> None:
-    plan = _plan_with(steps=[STEP], outcomes=[])
-    assert plan.acceptance_criteria == [
-        "Use the existing Postgres unique constraint for idempotency keys."
-    ]
 
 
 def test_unrelated_links_are_dropped_and_related_ones_kept() -> None:
@@ -314,14 +295,6 @@ def test_item_cited_by_several_steps_stays_where_it_belongs() -> None:
 
 
 
-def test_outcome_joining_several_items_is_split_one_per_line() -> None:
-    analysis = _analysis()
-    ids = [analysis.decisions[0].id, analysis.requirements[0].id]
-    outcomes = [{"text": "Both things will happen.", "ids": ids}]
-    plan = ImplementationPlanner(ScriptedLLM({"plan": dict(PLAN, outcomes=outcomes)})).plan(analysis)
-    statements = {d.id: d.statement for d in analysis.decisions} | {r.id: r.statement for r in analysis.requirements}
-    assert plan.acceptance_criteria[:2] == [statements[ids[0]], statements[ids[1]]]
-
 
 
 def test_summary_sentence_with_a_term_the_meeting_never_used_is_dropped() -> None:
@@ -336,3 +309,14 @@ def test_summary_sentence_with_a_term_the_meeting_never_used_is_dropped() -> Non
     assert _grounded_summary("It introduces Kafka for transaction events.", record) == (
         "It introduces Kafka for transaction events."
     )
+
+
+def test_plan_is_done_when_its_tasks_are_done_not_when_decisions_are_restated() -> None:
+    analysis = _analysis()
+    plan = ImplementationPlanner(ScriptedLLM({"plan": PLAN})).plan(analysis)
+    task_criteria = [c for t in analysis.tasks for c in t.acceptance_criteria]
+    decisions = {d.statement for d in analysis.decisions}
+    assert plan.acceptance_criteria
+    assert all(c in task_criteria for c in plan.acceptance_criteria)
+    assert not decisions & set(plan.acceptance_criteria)
+

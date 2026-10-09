@@ -69,7 +69,7 @@ export function PlanView({ plan }: { plan: ImplementationPlan }) {
       )}
       {plan.acceptance_criteria.length > 0 ? (
         <div className="done-when card">
-          <h3 className="done-when-title">The plan is done when</h3>
+          <h3 className="done-when-title">The plan is done when (suggested)</h3>
           <ul className="checklist">
             {plan.acceptance_criteria.map((criterion, i) => (
               <li key={`${i}-${criterion}`}>

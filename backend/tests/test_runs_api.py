@@ -78,7 +78,7 @@ def test_run_completes_and_is_retrievable(make_client) -> None:
     assert body["analysis"]["tasks"][0]["owner"] == "Priya"
     assert body["plan"]["steps"][0]["related_task_ids"] == ["TSK-001"]
     assert body["progress"]["stage"] == "Done"
-    assert body["progress"]["total_steps"] == 5
+    assert body["progress"]["total_steps"] == 6
 
 
 def test_runs_are_listed_newest_first_without_payload(make_client) -> None:

@@ -57,7 +57,7 @@ def test_empty_transcript_returns_422() -> None:
 
 def test_unusable_llm_output_returns_502_without_stack_trace() -> None:
     client = _client(
-        ScriptedLLM({"decisions": "x", "requirements": "x", "tasks": "x", "risks": "x"})
+        ScriptedLLM({"choices": "x", "decisions": "x", "requirements": "x", "tasks": "x", "risks": "x"})
     )
 
     response = client.post("/api/meetings/analyze", json={"transcript": DECISION_MEETING_TRANSCRIPT})

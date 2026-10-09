@@ -37,10 +37,33 @@ TASK: List the DECISIONS made in this meeting.
 A decision is something participants explicitly agreed, chose, locked, rejected,
 or put out of scope ("we'll go with X", "let's not do Y", "Z is out of scope
 for this release", "agreed").
-Include negative decisions (a rejected option, a non-goal) phrased as such,
-for example "Do not build a separate service for X."
-NOT decisions: proposals nobody accepted, ideas, "we could", open debates.
+Include negative decisions (a rejected option, a non-goal): start them with
+"Do not" and name exactly what was rejected, in the meeting's own words.
+NOT decisions: proposals nobody accepted, one person's preference that others
+pushed back on, ideas, "we could", open debates, and anything the meeting said
+it is not deciding yet.
 EXAMPLE: {"decisions":[{"statement":"Use SQLite for local drafts.","lines":[12]}]}
+""".strip()
+
+CHOICES_TASK = """
+TASK: List the CHOICES this meeting discussed: every question of what to do,
+which option to take, or whether to approve, sign, hire, buy, cut, change or
+build something.
+For each choice:
+- "choice": the question itself, starting with "Whether" or "Which".
+- "status": how the meeting LEFT it, judged from the LAST thing said about it:
+  "decided"  the group agreed to do something;
+  "rejected" the group agreed not to do it;
+  "deferred" the group agreed to hold off for now and decide later
+             ("not yet", "not today", "we'll decide after the review");
+  "open"     nobody settled it: a proposal others pushed back on, a debate
+             left hanging, or something said to be undecided or still open.
+  One person proposing or preferring something is not a decision.
+- "outcome": for decided, rejected or deferred, what holds now, as one short
+  statement ("Hold the offsite in March.", "Do not book the venue yet.");
+  for open, "".
+- "lines": the 1 or 2 lines where it was settled or left open.
+EXAMPLE: {"choices":[{"choice":"Whether to hold the offsite in March","status":"decided","outcome":"Hold the offsite in March.","lines":[12]},{"choice":"Which caterer to book","status":"open","outcome":"","lines":[30]}]}
 """.strip()
 
 REQUIREMENTS_TASK = """

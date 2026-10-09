@@ -13,10 +13,6 @@ TASK: Turn the engineering record above into an implementation plan.
 - "when": the timeframe, using only dates and timeframes written in the
   record ("before October 28", "launch week", "first 30 days after launch"),
   or "" if the record gives none.
-- "outcomes": up to 6 results that show the whole plan is done. Each restates
-  one or more decisions or requirements as a finished result ("Premium
-  package launched at 2,499 per month") and lists their IDs in "ids". Never
-  add a number, date or target those items do not state.
 
 RULES
 - Decisions are constraints: honor them, never contradict them.

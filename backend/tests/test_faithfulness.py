@@ -323,3 +323,34 @@ def test_sentence_without_a_modal_does_not_decide_strength() -> None:
     assert restore_modality("The payment state must be updated atomically with the idempotency key.", evidence) == (
         "The payment state should be updated atomically with the idempotency key."
     )
+
+
+def test_choice_left_open_vetoes_a_decision_and_becomes_an_open_question() -> None:
+    notes = (
+        "Meeting: Travel\n"
+        "Sameer: I'd rather cut the conference entirely until the pipeline improves.\n"
+        "Rahul: That would be premature. Two larger deals came from last year's event.\n"
+        "Priya: We're not deciding that now. Rahul, split the travel budget."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({
+        "choices": {"choices": [{"choice": "Whether to cut the conference", "status": "open", "outcome": "", "lines": [2, 4]}]},
+        "decisions": {"decisions": [{"statement": "Do not cut the conference entirely until the pipeline improves.", "lines": [2]}]},
+    })).run(notes)
+    assert outcome.analysis.decisions == []
+    assert [q.question for q in outcome.analysis.open_questions] == ["Whether to cut the conference"]
+    assert any("left this open" in d["reason"] for d in outcome.dropped)
+
+
+def test_deferred_choice_is_both_a_decision_and_an_open_question() -> None:
+    notes = (
+        "Meeting: Contracts\n"
+        "Ananya: The vendor wants a six-month commitment for a 9% discount.\n"
+        "Priya: Then don't sign the six-month contract yet. Ask for surge capacity terms."
+    )
+    outcome = MeetingAnalyzer(ScriptedLLM({
+        "choices": {"choices": [{"choice": "Whether to sign the six-month support contract", "status": "deferred",
+                                 "outcome": "Do not sign the six-month contract yet.", "lines": [3]}]},
+    })).run(notes)
+    assert [d.statement for d in outcome.analysis.decisions] == ["Do not sign the six-month contract yet."]
+    assert [q.question for q in outcome.analysis.open_questions] == ["Whether to sign the six-month support contract"]
+

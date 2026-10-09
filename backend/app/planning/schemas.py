@@ -27,16 +27,10 @@ class ExtractedPlanStep(ExtractionModel):
     task_ids: ItemIds = Field(default_factory=list)
 
 
-class ExtractedOutcome(ExtractionModel):
-    text: str = ""
-    ids: ItemIds = Field(default_factory=list)
-
-
 class ExtractedImplementationPlan(ExtractionModel):
     title: str = ""
     summary: str = ""
     steps: list[ExtractedPlanStep] = Field(default_factory=list)
-    outcomes: list[ExtractedOutcome] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
 
 
@@ -66,15 +60,6 @@ PLAN_SCHEMA: dict[str, Any] = {
                 ],
             },
         },
-        "outcomes": {
-            "type": "array",
-            "maxItems": 6,
-            "items": {
-                "type": "object",
-                "properties": {"text": _STRING, "ids": _IDS},
-                "required": ["text", "ids"],
-            },
-        },
     },
-    "required": ["title", "summary", "steps", "outcomes"],
+    "required": ["title", "summary", "steps"],
 }

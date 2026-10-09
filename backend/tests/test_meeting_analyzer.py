@@ -92,10 +92,10 @@ def _full_llm() -> ScriptedLLM:
     )
 
 
-def test_runs_four_focused_passes_in_order() -> None:
+def test_runs_focused_passes_in_order() -> None:
     llm = _full_llm()
     MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
-    assert [key for key, _ in llm.calls] == ["decisions", "requirements", "tasks", "risks"]
+    assert [key for key, _ in llm.calls] == ["choices", "decisions", "requirements", "tasks", "risks"]
 
 
 def test_prompts_share_the_transcript_prefix_for_cache_reuse() -> None:
@@ -284,7 +284,7 @@ def test_a_failing_pass_becomes_a_warning_not_a_failure() -> None:
 
 def test_all_passes_failing_raises_validation_error() -> None:
     llm = ScriptedLLM(
-        {"decisions": "x", "requirements": "x", "tasks": "x", "risks": "x"}
+        {"choices": "x", "decisions": "x", "requirements": "x", "tasks": "x", "risks": "x"}
     )
     with pytest.raises(AnalysisValidationError):
         MeetingAnalyzer(llm).analyze(PAYMENT_MEETING_TRANSCRIPT)
@@ -333,8 +333,8 @@ def test_progress_is_reported_per_stage() -> None:
             pass
 
     MeetingAnalyzer(_full_llm()).run(PAYMENT_MEETING_TRANSCRIPT, Recorder(), extra_stages=1)
-    assert stages[0] == ("Decisions", 1, 5)
-    assert stages[-1] == ("Risks & open questions", 4, 5)
+    assert stages[0] == ("Choices", 1, 6)
+    assert stages[-1] == ("Risks & open questions", 5, 6)
 
 
 def test_short_decision_links_to_longer_requirement_that_extends_it() -> None:

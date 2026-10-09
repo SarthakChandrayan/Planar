@@ -122,6 +122,17 @@ function App() {
     listSamples()
       .then(setSamples)
       .catch(() => setSamples([]))
+    // Website demo: app/?run=<id> opens that recorded meeting directly.
+    const linked = DEMO ? new URLSearchParams(window.location.search).get('run') : null
+    if (linked) {
+      getRun(linked)
+        .then((run) => {
+          setResult(run)
+          setTranscript(run.transcript)
+        })
+        .catch(() => undefined)
+      return
+    }
     const resumeId = readActiveRun()
     if (resumeId) {
       getRun(resumeId)
