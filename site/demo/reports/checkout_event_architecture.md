@@ -179,7 +179,7 @@ It ensures compliance with legal, compliance, and observability requirements.
 8. **Benchmark PostgreSQL indexing, outbox overhead, and the Redis-versus-PostgreSQL deduplication approach** _(TSK-003)_
    Rohan will benchmark PostgreSQL indexing, outbox overhead, and the Redis-versus-PostgreSQL deduplication approach
 
-### Done when
+### Done when (suggested)
 
 - [ ] Kafka infrastructure and permissions are mandatory.
 - [ ] OpenTelemetry propagation is required.

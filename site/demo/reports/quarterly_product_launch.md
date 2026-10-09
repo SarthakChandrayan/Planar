@@ -122,7 +122,7 @@ This plan implements the premium package launch with ₹2,499/month pricing, 15%
 7. **Approve launch communication** _(DEC-006, DEC-007, TSK-007)_
    Finalize and review launch communication against October 28 readiness assessment
 
-### Done when
+### Done when (suggested)
 
 - [ ] Premium package feature list finalized
 - [ ] October 28 readiness review coordinated

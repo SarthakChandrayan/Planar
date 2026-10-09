@@ -8,6 +8,7 @@
   "finished_at": "2026-10-07T11:03:34.829790Z",
   "transcript_chars": 14727,
   "progress": {
+   "stages": [],
    "stage": "Done",
    "step": 5,
    "total_steps": 5,
@@ -27,6 +28,7 @@
   "finished_at": "2026-10-07T09:03:52.940680Z",
   "transcript_chars": 12481,
   "progress": {
+   "stages": [],
    "stage": "Done",
    "step": 5,
    "total_steps": 5,
@@ -46,6 +48,7 @@
   "finished_at": "2026-10-05T07:55:16.992176Z",
   "transcript_chars": 3282,
   "progress": {
+   "stages": [],
    "stage": "Done",
    "step": 5,
    "total_steps": 5,
@@ -60,16 +63,26 @@
   "id": "q4_budget_review",
   "title": "Q4 Budget Review — Growth, Hiring & Infrastructure",
   "status": "succeeded",
-  "created_at": "2026-10-09T07:04:38.827387Z",
-  "started_at": "2026-10-09T07:04:38.829815Z",
-  "finished_at": "2026-10-09T07:19:33.357076Z",
+  "created_at": "2026-10-09T09:51:32.590391Z",
+  "started_at": "2026-10-09T09:51:32.595156Z",
+  "finished_at": "2026-10-09T10:09:43.113323Z",
   "transcript_chars": 14178,
   "progress": {
+   "stages": [
+    "Decisions",
+    "Decisions · second look",
+    "Requirements",
+    "Requirements · second look",
+    "Tasks",
+    "Risks & open questions",
+    "Checking decisions",
+    "Implementation plan"
+   ],
    "stage": "Done",
-   "step": 5,
-   "total_steps": 5,
-   "stage_tokens": 826,
-   "total_tokens": 3436,
+   "step": 8,
+   "total_steps": 8,
+   "stage_tokens": 590,
+   "total_tokens": 4005,
    "eta_seconds": null
   },
   "error": null,
@@ -84,6 +97,7 @@
   "finished_at": "2026-10-05T12:06:08.543070Z",
   "transcript_chars": 10429,
   "progress": {
+   "stages": [],
    "stage": "Done",
    "step": 5,
    "total_steps": 5,

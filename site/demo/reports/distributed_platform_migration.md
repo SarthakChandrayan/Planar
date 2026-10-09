@@ -178,7 +178,7 @@ This plan introduces Kafka for transaction events while maintaining RabbitMQ for
 7. **Confirm promotional campaign deadline and business constraints** _(TSK-007)_
    Align engineering efforts with business timelines and constraints for the promotional campaign.
 
-### Done when
+### Done when (suggested)
 
 - [ ] Kafka will be introduced for transaction-domain events and RabbitMQ will continue handling notification workloads.
 - [ ] Transaction IDs will be used as Kafka partition keys and consumers will validate state transitions.

@@ -38,14 +38,14 @@
  {
   "id": "q4_budget_review",
   "title": "Q4 Budget Review — Growth, Hiring & Infrastructure",
-  "recorded": "2026-10-09T07:04:38.827387+00:00",
-  "correct": 29,
-  "extracted": 42,
-  "found": 25,
-  "expected": 52,
-  "precision": 0.69,
-  "recall": 0.481,
-  "invented": 3
+  "recorded": "2026-10-09T09:51:32.590391+00:00",
+  "correct": 33,
+  "extracted": 46,
+  "found": 29,
+  "expected": 55,
+  "precision": 0.717,
+  "recall": 0.527,
+  "invented": 1
  },
  {
   "id": "quarterly_product_launch",

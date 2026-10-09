@@ -86,7 +86,7 @@ This plan implements offline-first draft storage using SQLite with GRDB on iOS a
 4. **Design resumable photo upload queue** _(REQ-003, TSK-004)_
    Create a queue system for photos that handles resumable uploads without blocking form data
 
-### Done when
+### Done when (suggested)
 
 - [ ] All draft stores (iOS and Android) persist data transactionally and flush on every field change
 - [ ] Sync API returns merged records with per-field timestamps for conflict resolution
