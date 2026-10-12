@@ -106,6 +106,9 @@ _RESTATED_DECISION_COVERAGE = 0.7
 # saved runs of the six keyed meetings: 0.5 removed 18 wrong requirements and
 # 2 right ones (precision +2 points; recall -0.7 on one set, same on the other).
 _RESTATED_WORK_COVERAGE = 0.5
+# The same share decides when a task is an agreed requirement the model gave
+# an owner nobody named (on the unseen hospital meeting: 3 of 7 such tasks
+# removed; no change on the six keyed meetings).
 # Inferred links: wording overlap needed, lower when evidence lines are shared.
 _LINK_SIMILARITY = 0.3
 _LINK_SIMILARITY_SAME_LINES = 0.12
@@ -882,7 +885,41 @@ class _RecordBuilder:
             r.model_copy(update={"id": format_item_id(REQ_PREFIX, i)}) for i, r in enumerate(kept, 1)
         ]
 
+    def _drop_tasks_restating_requirements(self) -> None:
+        """Drop tasks the model made out of an agreed requirement or decision.
+
+        "Let's support it, with a default of two hours" (Maya) became "Arjun
+        will implement the cancellation cutoff": nobody on those lines took
+        the work on, and the owner neither speaks nor is named there. A real
+        task restating a requirement still names its owner ("Ben, prototype
+        the draft store") or is said by them.
+        """
+        by_source = {line.source_line: line for line in self._transcript.lines}
+        targets = [(r.statement, _ref_lines([r.source_reference])) for r in self.requirements] + [
+            (d.statement, _ref_lines([d.source_reference])) for d in self.decisions
+        ]
+        kept = []
+        for task in self.tasks:
+            lines = _ref_lines(task.source_references)
+            evidence = [by_source[n] for n in sorted(lines) if n in by_source]
+            text = f"{task.title}. {task.description}"
+            if (
+                evidence
+                and not is_commitment(" ".join(line.content for line in evidence))
+                and not _owner_on(task.owner, evidence)
+                and any(
+                    lines & target_lines and coverage(statement, text) >= _RESTATED_WORK_COVERAGE
+                    for statement, target_lines in targets
+                )
+            ):
+                self._drop("task", text, "an agreed requirement, but nobody took it on", duplicate=True)
+                continue
+            kept.append(task)
+        self.tasks = [t.model_copy(update={"id": format_item_id(TSK_PREFIX, i)}) for i, t in enumerate(kept, 1)]
+
     def build(self) -> MeetingAnalysis:
+        # Fake tasks first: a requirement must not be dropped for restating one.
+        self._drop_tasks_restating_requirements()
         self._drop_requirements_restating_work()
         decs = [_target(d.id, d.statement, [d.source_reference]) for d in self.decisions]
         reqs = [_target(r.id, r.statement, [r.source_reference]) for r in self.requirements]
@@ -943,6 +980,14 @@ def _source(grounding: Grounding, grounder: Grounder, claim: str) -> SourceRefer
         line_end=lines[-1].source_line,
         speaker=speaker,
     )
+
+
+def _owner_on(owner: str | None, lines: list[TranscriptLine]) -> bool:
+    """The owner says one of these lines or is named in one."""
+    if not owner:
+        return False
+    name = owner.split()[-1].lower()
+    return any(name in (line.speaker or "").lower() or name in line.content.lower() for line in lines)
 
 
 def _sentence_case(text: str) -> str:

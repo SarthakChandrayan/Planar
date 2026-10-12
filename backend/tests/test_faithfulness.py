@@ -5,6 +5,7 @@ from app.analysis.grounding import (
     affirms,
     asserts_unstated_negative,
     is_question,
+    is_unresolved,
     restore_modality,
 )
 from tests.fakes import ScriptedLLM
@@ -304,6 +305,36 @@ def test_requirement_restating_a_task_on_the_same_line_is_dropped() -> None:
         ("REQ-001", "Campaign spend must be measured on net revenue after refunds."),
     ]
     assert any(d["reason"].startswith("restates a task") for d in outcome.dropped)
+
+
+def test_agreed_requirement_given_an_owner_nobody_named_is_not_a_task() -> None:
+    notes = (
+        "Meeting: Cancellations\n"
+        "Arjun: We could make the cancellation window configurable per department.\n"
+        "Maya: That seems sensible. Let's support it, with a default of two hours.\n"
+        "Priya: I'll build the cancellation screens."
+    )
+    outcome = _run(notes, {
+        "decisions": {"decisions": [
+            {"statement": "Cancellation window is configurable per department with a default of two hours.", "lines": [3]},
+        ]},
+        "tasks": {"tasks": [
+            {"title": "Implement cancellation cutoff per department",
+             "description": "Arjun will make the cancellation window configurable per department with a default of two hours",
+             "owner": "Arjun", "priority": "medium", "acceptance_criteria": [], "lines": [3]},
+            {"title": "Build cancellation screens", "description": "Priya will build the cancellation screens",
+             "owner": "Priya", "priority": "medium", "acceptance_criteria": [], "lines": [4]},
+        ]},
+    })
+    assert [(t.id, t.owner) for t in outcome.analysis.tasks] == [("TSK-001", "Priya")]
+
+
+def test_unselected_and_unfinalized_count_as_left_open() -> None:
+    assert is_unresolved("We need to, but I haven't selected one.")
+    assert is_unresolved("We haven't finalized integration with the patient management system.")
+    assert is_unresolved("Before we close, the SMS provider is still unselected.")
+    assert is_unresolved("We don't have enough information to settle that today.")
+    assert not is_unresolved("We can't assume everyone has it, and we haven't approved using it.")
 
 
 def test_timing_constraint_is_not_a_task() -> None:

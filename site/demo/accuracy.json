@@ -24,6 +24,18 @@
   "invented": 1
  },
  {
+  "id": "hospital_scheduling",
+  "title": "Hospital Scheduling System — Product & Engineering Sync",
+  "recorded": "2026-10-12T09:24:46.470909+00:00",
+  "correct": 56,
+  "extracted": 71,
+  "found": 41,
+  "expected": 55,
+  "precision": 0.789,
+  "recall": 0.745,
+  "invented": 1
+ },
+ {
   "id": "mobile_offline_sync",
   "title": "Mobile Offline Mode Planning",
   "recorded": "2026-10-05T07:49:37.900459+00:00",

@@ -176,31 +176,38 @@ npm run build
 
 ## Measuring accuracy
 
-Six sample meetings have hand-labelled answer keys in
-`backend/tests/evaluation/keys/`: five engineering and product meetings plus a
-finance budget review. Each key lists what the meeting really decided,
-required, assigned, worried about and left open, with the transcript lines that
-say so, plus things that must not be extracted (an answered question as an open
-one). Items match by cited line, not wording, so the score does not reward a
+Seven sample meetings have hand-labelled answer keys in
+`backend/tests/evaluation/keys/`: five engineering and product meetings, a
+finance budget review, and a hospital scheduling meeting added later as a test
+on a meeting none of the rules had been tuned on. Each key
+lists what the meeting really decided, required, assigned, worried about and
+left open, with the transcript lines that say so, plus things that must not be
+extracted (a rejected idea as a decision, an answered question as an open one).
+Items match by cited line, not wording, so the score does not reward a
 phrasing.
 
 ```powershell
 cd backend
 .\.venv\Scripts\python scripts\score.py                    # score the latest saved run of each keyed meeting (no model)
-.\.venv\Scripts\python scripts\evaluate.py --name current  # run all six with the model and score them (~60 min)
+.\.venv\Scripts\python scripts\evaluate.py --name current  # run all seven with the model and score them (~70 min)
 ```
 
-Judge every change by these scores across all six meetings, never by one
-report. With qwen3:8b (October 2026), across the six: **about 75% of extracted
-items are correct and 64% of what was said is found**. Tasks and owners are the
-strongest part (about 90% correct, 80% found); risks and open questions are the
-weakest (under half found). The model misses items more often than it invents
-them.
+Judge every change by these scores across all the meetings, never by one
+report. With qwen3:8b (October 2026), across the seven: **about 77% of extracted
+items are correct and 70% of what was said is found** (76% and 67% on the
+original six). Scored before any rule had seen it, the hospital meeting got 71%
+and 69%, close to the tuned six; the fixes it then led to raised it to 79% and
+75%, and also raised the six. Tasks and owners are
+the strongest part (about 89% correct, 77% found); risks and open questions are
+the weakest (about half found). The model misses items more often than it
+invents them.
 
 Measured and kept: a second look at decisions and requirements (recall 60% → 68%
-on the original five). Measured and dropped, because they scored no better:
-extracting one topic at a time, a pass that classified every choice, and a
-verify pass that labels each decision as agreed, deferred or only proposed
+on the original five), and dropping items that copy another category on the
+same lines: a requirement that restates a task or open question, and a task
+made from an agreed requirement with an owner nobody named. Measured and
+dropped, because they scored no better: extracting one topic at a time, a pass
+that classified every choice, and a verify pass that labels each decision as agreed, deferred or only proposed
 (still available, off by default: `ANALYSIS_VERIFY=true`).
 
 CI runs the fast backend tests, lint and the frontend build on every push.

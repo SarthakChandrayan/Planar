@@ -40,6 +40,34 @@
   "warnings": []
  },
  {
+  "id": "hospital_scheduling",
+  "title": "Hospital Scheduling System — Product & Engineering Sync",
+  "status": "succeeded",
+  "created_at": "2026-10-12T09:24:46.470909Z",
+  "started_at": "2026-10-12T09:24:46.476479Z",
+  "finished_at": "2026-10-12T09:45:48.781888Z",
+  "transcript_chars": 14694,
+  "progress": {
+   "stages": [
+    "Decisions",
+    "Decisions · second look",
+    "Requirements",
+    "Requirements · second look",
+    "Tasks",
+    "Risks & open questions",
+    "Implementation plan"
+   ],
+   "stage": "Done",
+   "step": 7,
+   "total_steps": 7,
+   "stage_tokens": 846,
+   "total_tokens": 4744,
+   "eta_seconds": null
+  },
+  "error": null,
+  "warnings": []
+ },
+ {
   "id": "mobile_offline_sync",
   "title": "Mobile Offline Mode Planning",
   "status": "succeeded",

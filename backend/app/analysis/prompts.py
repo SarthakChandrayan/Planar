@@ -94,8 +94,12 @@ A risk is something participants said could go wrong: failure modes, missed
 deadlines, dependencies, capacity limits, customer or market reactions, cost,
 security or compliance exposure. Look for warnings and concerns: "could",
 "might", "risk", "concern", "warned", "problematic", "not enough capacity",
-"hard to reverse", "if ... then ...". Include risks the meeting decided to
-accept or mitigate, and say what could happen.
+"hard to reverse", "if ... then ...". Also problems people describe as
+common or already happening ("that's common", "can easily take twice as
+long", "we don't want someone to ...", "what if X goes down"). Include risks
+the meeting decided to accept or mitigate, and say what could happen.
+Quote the concern someone raised; never turn an agreed rule ("overrides
+should record the reason") into a risk.
 "severity": low, medium, high or critical, from how seriously it was treated.
 Name the system, vendor, plan or team exactly as the meeting did ("the
 monitoring vendor's cheaper plan"), never a broader or different one.
@@ -104,7 +108,8 @@ to data loss"). Something still to be decided is an OPEN QUESTION, not a risk.
 An open question is something explicitly left unresolved: to be decided later,
 to be answered by someone not present, or marked as needing further
 discussion, investigation or review (including in written meeting notes). Questions answered during the
-meeting are NOT open questions.
+meeting are NOT open questions. A closing recap of what is still unselected,
+undecided or waiting on an approval lists open questions: one per item.
 "context": one short sentence on why the question matters.
 EXAMPLE: {"risks":[{"description":"Wrong device clocks could overwrite newer edits.","severity":"high","lines":[33]}],"open_questions":[{"question":"Does the web app need offline mode?","context":"Sales keeps asking.","lines":[52]}]}
 """.strip()

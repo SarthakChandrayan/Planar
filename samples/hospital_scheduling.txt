@@ -1,0 +1,353 @@
+# Hospital Scheduling System — Product & Engineering Sync
+
+**Date:** October 9, 2026
+**Duration:** 38 minutes
+**Attendees:** Maya (Product Manager), Arjun (Backend Engineer), Priya (Frontend Engineer), Dr. Meera (Clinical Operations), Rahul (QA Engineer), Neha (UX Designer)
+
+**Maya:** Okay, let's get started. The goal today is to finalize the first version of the hospital scheduling system.
+
+**Maya:** We're building this for Greenfield Hospital, initially for outpatient appointments.
+
+**Dr. Meera:** Just outpatient appointments? Because our biggest problem is actually coordinating doctors who work across multiple departments.
+
+**Maya:** Right, but we agreed to start with outpatient scheduling last week.
+
+**Arjun:** Yeah, I have the initial database schema ready for that.
+
+**Priya:** Before we go further, are we talking about patients booking appointments themselves or receptionists creating them?
+
+**Maya:** Both, ideally.
+
+**Dr. Meera:** Receptionists first. Most of our older patients call the hospital. They aren't going to use an app.
+
+**Neha:** We should still make the patient interface accessible. Large text, straightforward navigation, that kind of thing.
+
+**Rahul:** Are we including accessibility testing in the first release?
+
+**Maya:** Yes, basic accessibility checks are part of the first release.
+
+**Arjun:** Coming back to the database, I currently have doctors, departments, appointment slots, patients, and appointments.
+
+**Dr. Meera:** We also need rooms. A doctor might be available but the consultation room might not be.
+
+**Arjun:** Okay, so room availability needs to be considered when generating slots.
+
+**Priya:** Wait, does that mean a slot is unavailable if either the doctor or the room is unavailable?
+
+**Dr. Meera:** Correct. We can't schedule two consultations in the same room at the same time.
+
+**Maya:** Let's capture that as a requirement.
+
+**Arjun:** That changes my slot-generation logic slightly, but it's manageable.
+
+**Rahul:** What about appointments that run longer than expected?
+
+**Dr. Meera:** That's common in cardiology. A consultation scheduled for fifteen minutes can easily take thirty.
+
+**Priya:** So should we automatically block extra time after every appointment?
+
+**Dr. Meera:** No, definitely not every appointment. That would destroy our capacity.
+
+**Maya:** Could we configure a buffer per department?
+
+**Dr. Meera:** Yeah, maybe. Some departments need it more than others.
+
+**Arjun:** We can store a configurable buffer duration against each department.
+
+**Maya:** Good. Let's include configurable department-level buffers in the requirements.
+
+**Neha:** How should patients see available appointments? A calendar or a simple list?
+
+**Priya:** A calendar looks nicer, but it could be awkward on smaller screens.
+
+**Dr. Meera:** Honestly, receptionists mostly need a list showing the doctor, time, room, and appointment status.
+
+**Neha:** That's for staff. I'm asking about patients.
+
+**Maya:** Let's start with a date-based list for patients and staff. We can revisit the calendar later.
+
+**Priya:** Fine, but I'd like to keep the component architecture flexible enough to add a calendar.
+
+**Arjun:** No problem.
+
+**Rahul:** We haven't discussed cancellations yet.
+
+**Maya:** Patients should be able to cancel their appointments.
+
+**Dr. Meera:** Up to a point. We don't want someone cancelling two minutes before the appointment without any visibility for the staff.
+
+**Priya:** Should we enforce a cancellation cutoff?
+
+**Dr. Meera:** Most departments ask for at least two hours' notice.
+
+**Maya:** Is that a hospital-wide policy or just a recommendation?
+
+**Dr. Meera:** It's what we usually tell patients, but exceptions happen.
+
+**Arjun:** We could make the cancellation window configurable per department.
+
+**Maya:** That seems sensible. Let's support it, with a default of two hours.
+
+**Rahul:** What happens if someone calls after the cutoff and the receptionist cancels the appointment manually?
+
+**Dr. Meera:** Receptionists need an override. They should record why they're doing it.
+
+**Maya:** Agreed. Manual overrides should record the staff member and the reason.
+
+**Priya:** Should the patient receive a cancellation notification?
+
+**Maya:** Yes, by SMS initially.
+
+**Arjun:** Are we integrating with an SMS provider now?
+
+**Maya:** We need to, but I haven't selected one.
+
+**Arjun:** That affects the notification interface, although we can abstract the provider.
+
+**Maya:** Please do that. We shouldn't couple the appointment service to a particular SMS vendor.
+
+**Rahul:** What about email notifications?
+
+**Maya:** Not for the first release.
+
+**Neha:** A lot of patients might prefer WhatsApp.
+
+**Dr. Meera:** We can't assume everyone has it, and we haven't approved using it for patient communication.
+
+**Maya:** Agreed. SMS only for the first release. Let's park WhatsApp.
+
+**Priya:** Do we send reminders as well as cancellation messages?
+
+**Maya:** Yes, a reminder twenty-four hours before an appointment.
+
+**Dr. Meera:** Unless the appointment was created less than twenty-four hours in advance.
+
+**Arjun:** In that case, we could send the confirmation immediately and skip the reminder if the scheduled reminder time has already passed.
+
+**Maya:** That sounds right.
+
+**Rahul:** How do we prevent duplicate reminders if the notification worker retries?
+
+**Arjun:** We can use an idempotency key based on the appointment ID and notification type.
+
+**Priya:** What happens if the appointment time changes after the reminder has already been queued?
+
+**Arjun:** The queued job should be invalidated, and a new reminder should be scheduled.
+
+**Maya:** Let's add rescheduling to the notification requirements.
+
+**Dr. Meera:** One important thing: doctors sometimes take emergency leave. The hospital needs to move all their appointments quickly.
+
+**Priya:** Move them automatically to another doctor?
+
+**Dr. Meera:** No, absolutely not. Patients may have specifically chosen that doctor.
+
+**Maya:** We could generate a list of affected appointments and let the receptionist contact patients.
+
+**Dr. Meera:** Yes. That's much safer.
+
+**Arjun:** We could mark the affected appointments as requiring rescheduling without changing their assigned doctor.
+
+**Rahul:** Should those appointments remain active?
+
+**Maya:** Good question. If the doctor is unavailable, we shouldn't treat them as confirmed.
+
+**Dr. Meera:** But we also shouldn't cancel them automatically.
+
+**Priya:** So perhaps a status like "rescheduling required"?
+
+**Maya:** Yes, let's introduce that status.
+
+**Arjun:** I'll update the appointment state model.
+
+**Rahul:** We need to test what happens when a doctor becomes unavailable after appointments have already been booked.
+
+**Arjun:** Agreed.
+
+**Neha:** Can we talk about waitlists? If someone cancels, another patient could take that slot.
+
+**Maya:** That's a useful feature, but I'm worried about scope.
+
+**Dr. Meera:** Waitlists would save receptionists a lot of phone calls.
+
+**Priya:** We could automatically offer the slot to the next person in the queue.
+
+**Dr. Meera:** No, not automatically. Someone might be unavailable at short notice, or the appointment might require preparation.
+
+**Maya:** What if we notify the next eligible patient and give them a limited time to accept?
+
+**Arjun:** That introduces reservation locks and race conditions. Two patients shouldn't be able to claim the same slot.
+
+**Priya:** We can temporarily hold the slot while the patient responds.
+
+**Rahul:** How long is the hold? And what happens if the notification arrives late?
+
+**Maya:** We don't have enough information to settle that today.
+
+**Dr. Meera:** Agreed. We need to understand how receptionists currently manage waitlists.
+
+**Maya:** Okay, waitlist automation stays undecided. It isn't required for the initial release.
+
+**Arjun:** I'll keep the current schema from blocking us from adding it later.
+
+**Priya:** That works.
+
+**Rahul:** Another issue: can a patient book two appointments that overlap?
+
+**Dr. Meera:** Generally, no. But some appointments are intentionally scheduled together, like a consultation followed by a diagnostic test.
+
+**Maya:** Those aren't necessarily the same type of appointment, though.
+
+**Arjun:** We need to distinguish an overlap that is invalid from appointments that are part of the same care plan.
+
+**Priya:** Are we building care plans in this release?
+
+**Maya:** No, that's outside our scope.
+
+**Dr. Meera:** Then receptionists should at least be warned about overlapping appointments rather than having the system silently allow them.
+
+**Maya:** Let's do that for now. Show a warning and require staff confirmation.
+
+**Rahul:** Should patients see the same warning?
+
+**Maya:** For self-service booking, we should block overlapping appointments unless there's an explicitly supported exception.
+
+**Arjun:** That's slightly different from the receptionist flow.
+
+**Maya:** Right. Staff get a warning with an override; patient self-booking blocks the overlap.
+
+**Arjun:** Understood.
+
+**Neha:** We should make that distinction visible in the interface so receptionists know they're overriding a conflict.
+
+**Priya:** I'll make the warning explicit and include the conflicting appointment details.
+
+**Rahul:** We should also log the override.
+
+**Maya:** Yes, log the staff member, timestamp, and reason.
+
+**Arjun:** Do we need a full audit log for every appointment change?
+
+**Dr. Meera:** Absolutely. If there's a dispute about who changed an appointment, we need to know.
+
+**Maya:** Let's include an audit trail for creation, cancellation, rescheduling, and manual overrides.
+
+**Arjun:** I'll make the audit records append-only at the application level.
+
+**Rahul:** We should verify that ordinary users can't edit or delete audit records through the API.
+
+**Arjun:** Sure.
+
+**Priya:** What roles are we supporting? Receptionist, doctor, administrator?
+
+**Dr. Meera:** Doctors should see their own schedules, not everybody else's patient information.
+
+**Maya:** Receptionists can manage appointments across their authorized departments. Administrators can configure departments, rooms, doctors, and scheduling policies.
+
+**Arjun:** We need department-level access control, then.
+
+**Rahul:** And we should test direct API access, not just hide buttons in the frontend.
+
+**Priya:** Yes, the backend will enforce permissions.
+
+**Neha:** What about patient records? Are we storing medical history?
+
+**Maya:** No. We're building scheduling, not an electronic health record system.
+
+**Dr. Meera:** We need enough information to identify the patient and contact them, but not their clinical notes.
+
+**Arjun:** So patient name, contact number, and a patient identifier from the hospital's existing system?
+
+**Dr. Meera:** Ideally, yes.
+
+**Maya:** We haven't finalized integration with the hospital's existing patient management system.
+
+**Arjun:** Without that, we need a temporary way to register patients.
+
+**Maya:** For the pilot, let's support manual patient registration, but keep the integration point separate.
+
+**Priya:** Should patients have accounts and passwords?
+
+**Neha:** That could make self-service booking unnecessarily difficult.
+
+**Dr. Meera:** We should avoid collecting more information than we need.
+
+**Maya:** Let's use phone-number verification for patient self-service, assuming we can get the security review approved.
+
+**Arjun:** We can implement the interface behind a feature flag while the review is pending.
+
+**Rahul:** Then we need to be explicit that self-service isn't enabled until that approval comes through.
+
+**Maya:** Agreed.
+
+**Priya:** Can we talk about the pilot timeline? I need to know when the UI should be ready.
+
+**Maya:** The target is to have an internal demonstration by the end of October.
+
+**Arjun:** That sounds achievable if we keep the scope tight.
+
+**Dr. Meera:** The reception team needs time to try it before patients start using it.
+
+**Maya:** Yes. Internal demonstration first, staff testing second, then we decide whether it's ready for a patient pilot.
+
+**Rahul:** We need representative test data from different departments.
+
+**Dr. Meera:** I can arrange anonymized sample schedules and examples of common scheduling conflicts.
+
+**Rahul:** That would be useful.
+
+**Priya:** Are we building reporting dashboards for administrators?
+
+**Maya:** Basic appointment counts and cancellation counts would be helpful.
+
+**Arjun:** Do we need charts, exports, and department comparisons too?
+
+**Maya:** No, not in the first release. A basic summary is enough.
+
+**Dr. Meera:** We also need to know how many appointments were disrupted by doctor absences.
+
+**Maya:** Let's include a count of appointments requiring rescheduling in the summary.
+
+**Rahul:** Are we tracking waiting-room delays?
+
+**Dr. Meera:** That would require recording actual arrival and consultation times. We don't have that workflow defined.
+
+**Maya:** Then let's park waiting-time analytics for a later phase.
+
+**Arjun:** Fine. I'll keep the initial reporting endpoints simple.
+
+**Priya:** One last thing: what if the internet goes down at reception?
+
+**Dr. Meera:** They still need to see the day's appointments.
+
+**Arjun:** Offline editing is a different level of complexity. We'd need conflict resolution when connectivity returns.
+
+**Maya:** We're not building offline editing for the first release.
+
+**Dr. Meera:** Can receptionists at least print the daily schedule?
+
+**Priya:** That's straightforward. We can provide a print-friendly view.
+
+**Maya:** Let's include that.
+
+**Rahul:** I'll add a print-layout check to the acceptance tests.
+
+**Arjun:** I'll document the API contracts once the appointment states are finalized.
+
+**Priya:** I'll start with the daily schedule, appointment creation, and cancellation screens.
+
+**Neha:** I'll review the patient flow for accessibility and make sure the status labels are understandable.
+
+**Dr. Meera:** I'll coordinate with receptionists to validate the proposed workflows.
+
+**Maya:** Great. Before we close, the SMS provider is still unselected, waitlist automation is undecided, and patient self-service depends on the security review.
+
+**Arjun:** Correct. The core scheduling model will support rooms, department buffers, cancellation rules, and rescheduling status.
+
+**Rahul:** I'll cover appointment conflicts, permissions, audit records, and notification retries in the test plan.
+
+**Priya:** And I'll keep the first release focused on the list-based schedule rather than a full calendar.
+
+**Dr. Meera:** That should solve a good part of our current problem.
+
+**Maya:** All right, let's wrap up. We'll review the updated requirements at the next sync. Thanks, everyone.

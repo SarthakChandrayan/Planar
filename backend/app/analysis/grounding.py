@@ -435,7 +435,9 @@ _AFFIRMS = re.compile(
 _UNRESOLVED = re.compile(
     r"\b(?:needs? to (?:determine|decide|confirm|define|agree on|work out)"
     r"|(?:has|have) not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved|agreed)"
-    r"|not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved)"
+    r"|(?:hasn't|haven't) (?:yet )?(?:been )?(?:decided|determined|finalized|resolved|agreed|selected|chosen|picked)"
+    r"|not (?:yet )?(?:been )?(?:decided|determined|finalized|resolved|selected|chosen)"
+    r"|unselected|(?:don't|do not) have enough information to (?:settle|decide)"
     r"|remains? (?:unresolved|open|undecided)|undecided|to be (?:decided|determined|confirmed)"
     r"|remains? to be (?:defined|decided|determined|finalized|confirmed)"
     r"|still (?:open|needs? to be (?:finalized|defined|decided|determined|confirmed))"
